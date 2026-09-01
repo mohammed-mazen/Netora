@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1787876645525,
+      "tag": "0000_sudden_king_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1787880401904,
+      "tag": "0001_brave_nightcrawler",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787883215466,
+      "tag": "0002_sleepy_mac_gargan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787934908406,
+      "tag": "0003_illegal_drax",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1787958575404,
+      "tag": "0004_spotty_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1788056819029,
+      "tag": "0005_bumpy_bloodscream",
+      "breakpoints": true
+    }
+  ]
+}

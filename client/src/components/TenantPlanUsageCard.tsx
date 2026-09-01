@@ -1,0 +1,12 @@
+import { trpc } from "@/lib/trpc";
+import { Gauge, UsersRound, Wifi } from "lucide-react";
+
+function Usage({ label, used, limit, Icon }: { label: string; used: number; limit: number | null; Icon: typeof Gauge }) { const percentage = limit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : null; return <div className="rounded-xl bg-slate-50 p-3"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-700">{label}</span><Icon className="h-4 w-4 text-violet-600" /></div><p className="mt-3 text-sm font-bold text-slate-900">{used} <span className="text-[10px] font-medium text-slate-500">/ {limit ?? "غير محدد"}</span></p>{percentage !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${percentage >= 90 ? "bg-rose-500" : percentage >= 70 ? "bg-amber-500" : "bg-violet-600"}`} style={{ width: `${percentage}%` }} /></div>}</div>; }
+
+export function TenantPlanUsageCard({ organizationSlug }: { organizationSlug: string }) {
+  const query = trpc.tenant.planUsage.useQuery({ organizationSlug }, { enabled: Boolean(organizationSlug), retry: false });
+  if (!organizationSlug) return null;
+  if (query.isLoading) return <section className="rounded-2xl border border-slate-200 bg-white p-5 text-xs text-slate-500">جارٍ تحميل حدود الخطة…</section>;
+  if (query.error || !query.data) return <section className="rounded-2xl border border-rose-100 bg-rose-50 p-5 text-xs text-rose-700">تعذر تحميل استخدام الخطة؛ لم تُعرض قيمة بديلة.</section>;
+  const { subscription, resources } = query.data; return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(23,35,61,.035)]"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold text-violet-600">حوكمة الموارد</p><h2 className="mt-1 text-sm font-bold text-slate-900">استخدام خطة المؤسسة</h2><p className="mt-1 text-xs text-slate-500">{subscription ? `${subscription.planName} · ${subscription.status}` : "لا توجد خطة فعالة؛ لا يظهر حد افتراضي."}</p></div><Gauge className="h-5 w-5 text-violet-600" /></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><Usage label="الراوترات" used={resources.routers.used} limit={resources.routers.limit} Icon={Wifi} /><Usage label="العملاء" used={resources.customers.used} limit={resources.customers.limit} Icon={UsersRound} /></div></section>;
+}
