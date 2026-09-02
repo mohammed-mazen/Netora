@@ -8,6 +8,7 @@
 // to run as a single instance alongside the API process on one VPS (see
 // ecosystem.config.cjs). If you outgrow a single VPS, swap this file's
 // `claimNextJob`/`tick` loop for a real queue (e.g. BullMQ + Redis) without
+import { monitorSamples, monitorSettings } from "../../drizzle/schema";
 // touching the per-job-type handlers below.
 import { and, asc, eq, lt, lte, or } from "drizzle-orm";
 import { backgroundJobs } from "../../drizzle/schema";
@@ -218,6 +219,9 @@ export async function executeJob(job: Job) {
       case "monitor_action":
         outcome = await handleMonitorAction(job);
         break;
+      case "monitor_alert_dispatch":
+        outcome = await handleMonitorAlertDispatch(job);
+        break;
       case "backup_run":
         outcome = await handleBackupRun(job);
         break;
@@ -234,6 +238,36 @@ export async function executeJob(job: Job) {
     console.warn(`[Worker] job ${job.id} (${job.type}) failed: ${outcome.error}`);
     await markFailedOrRetrying(job, outcome.error ?? "فشل غير معروف");
   }
+}
+
+async function handleMonitorAlertDispatch(job: Job): Promise<{ ok: boolean; error?: string }> {
+  let payload: { sampleId?: number } = {};
+  try {
+    payload = job.payload ? JSON.parse(job.payload) : {};
+  } catch {
+    return { ok: false, error: "حمولة المهمة غير صالحة" };
+  }
+  if (!payload.sampleId) return { ok: false, error: "المهمة لا تحمل معرّف القراءة (sampleId)" };
+  if (!job.organizationId) return { ok: false, error: "المهمة لا تحمل مؤسسة" };
+
+  const db = await getDb();
+  if (!db) return { ok: false, error: "قاعدة البيانات غير متاحة" };
+
+  const sampleResult = await db.select().from(monitorSamples).where(eq(monitorSamples.id, payload.sampleId)).limit(1);
+  const sample = sampleResult[0];
+  if (!sample) return { ok: false, error: "القراءة المرتبطة بالمهمة غير موجودة" };
+
+  const settingsResult = await db.select().from(monitorSettings).where(eq(monitorSettings.organizationId, job.organizationId)).limit(1);
+  const settings = settingsResult[0];
+  if (!settings || !settings.telegramChatId) return { ok: true };
+
+  const alerts: string[] = [];
+  if (settings.batteryNotification && sample.batteryPercent != null && sample.batteryPercent <= settings.batteryCriticalPercentage) alerts.push(`⚠️ تحذير بطارية: النسبة الحالية ${sample.batteryPercent}%`);
+
+  if (alerts.length === 0) return { ok: true };
+
+  const { sendTelegramAlert } = await import("../notifications");
+  try { await sendTelegramAlert({ chatId: settings.telegramChatId, text: alerts.join("\n") }); return { ok: true }; } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "فشل إرسال التنبيه" }; }
 }
 
 async function handleMonitorAction(job: Job): Promise<{ ok: boolean; error?: string }> {

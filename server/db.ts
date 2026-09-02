@@ -1760,18 +1760,9 @@ export async function listTenantMonitorSamples(organizationId: number, options: 
 export async function recordTenantMonitorSample(input: { organizationId: number; cpuPercent?: number | null; memoryPercent?: number | null; diskPercent?: number | null; batteryPercent?: number | null; serviceStatus?: "healthy" | "degraded" | "down" }) {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة لتسجيل قراءة المراقبة");
-  await db.insert(monitorSamples).values({ organizationId: input.organizationId, cpuPercent: input.cpuPercent ?? null, memoryPercent: input.memoryPercent ?? null, diskPercent: input.diskPercent ?? null, batteryPercent: input.batteryPercent ?? null, serviceStatus: input.serviceStatus ?? "healthy" });
-  if (input.batteryPercent != null) {
-    const settings = await getTenantMonitorSettings(input.organizationId);
-    if (settings.batteryNotification && input.batteryPercent <= settings.batteryCriticalPercentage) {
-      try {
-        const { sendTelegramBatteryAlert } = await import("./notifications");
-        await sendTelegramBatteryAlert({ chatId: settings.telegramChatId ?? null, batteryPercent: input.batteryPercent });
-      } catch (error) {
-        console.warn("[Monitor] Failed to dispatch battery alert", error);
-      }
-    }
-  }
+  const sampleResult = await db.insert(monitorSamples).values({ organizationId: input.organizationId, cpuPercent: input.cpuPercent ?? null, memoryPercent: input.memoryPercent ?? null, diskPercent: input.diskPercent ?? null, batteryPercent: input.batteryPercent ?? null, serviceStatus: input.serviceStatus ?? "healthy" });
+  const sampleId = Number(sampleResult[0]?.insertId);
+  await db.insert(backgroundJobs).values({ organizationId: input.organizationId, routerId: null, type: "monitor_alert_dispatch", idempotencyKey: `sample_${sampleId}`, status: "queued", payload: JSON.stringify({ operation: "monitor_alert_dispatch", sampleId }) });
   return { recorded: true as const };
 }
 
