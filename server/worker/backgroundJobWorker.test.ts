@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { backgroundJobs, smsMessages } from "../../drizzle/schema";
+import { backgroundJobs, smsMessages, monitorSettings, monitorSamples, users, organizations } from "../../drizzle/schema";
 import {
   createOrganizationForUser,
   createTenantCustomer,
@@ -296,5 +296,27 @@ describe("background job worker (real DB, no poll-interval wait — calls claimN
     } finally {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     }
+  });
+
+  it("monitor_alert_dispatch: dispatches telegram alert when threshold is crossed and marks success", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("db unavailable");
+
+    const userResult = await db.insert(users).values({ openId: `id_${Date.now()}`, email: `test-monitor-${Date.now()}@example.com`, passwordHash: "dummy" });
+    const orgResult = await db.insert(organizations).values({ name: "monitor org test", slug: `test_slug_${Date.now()}`, status: "trial", ownerUserId: Number(userResult[0].insertId) });
+    const realOrgId = Number(orgResult[0].insertId);
+    await db.insert(monitorSettings).values({ organizationId: realOrgId, batteryNotification: 1, batteryCriticalPercentage: 20, telegramChatId: "chat123" }).onDuplicateKeyUpdate({ set: { batteryNotification: 1, batteryCriticalPercentage: 20, telegramChatId: "chat123" }});
+    const sample = await db.insert(monitorSamples).values({ organizationId: realOrgId, batteryPercent: 10, serviceStatus: "healthy" });
+    const sampleId = Number(sample[0].insertId);
+
+    const jobInsert = await db.insert(backgroundJobs).values({ organizationId: realOrgId, routerId: null, type: "monitor_alert_dispatch", idempotencyKey: `sample_${sampleId}`, status: "queued", payload: JSON.stringify({ operation: "monitor_alert_dispatch", sampleId }) });
+    const jobId = Number(jobInsert[0].insertId);
+
+    const job = await claimNextJob();
+    expect(job?.id).toBe(jobId);
+    await executeJob(job!);
+
+    const after = await fetchJob(jobId);
+    expect(after?.status).toBe("succeeded");
   });
 });
