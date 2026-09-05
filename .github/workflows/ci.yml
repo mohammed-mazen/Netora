@@ -14,8 +14,6 @@ jobs:
       mariadb:
         image: mariadb:10.11
         env:
-          MARIADB_USER: root
-          MARIADB_PASSWORD: root
           MARIADB_ROOT_PASSWORD: root
           MARIADB_DATABASE: netora
         ports:
