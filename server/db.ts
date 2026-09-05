@@ -2950,3 +2950,38 @@ export async function processWebhookEventIdempotently(
     return true;
   });
 }
+
+export async function exportFullTenantData(organizationId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+
+  const [
+    orgData,
+    routersData,
+    customersData,
+    vouchersData,
+    sessionsData,
+    invoicesData
+  ] = await Promise.all([
+    db.select().from(organizations).where(eq(organizations.id, organizationId)),
+    db.select().from(routers).where(eq(routers.organizationId, organizationId)),
+    db.select().from(customers).where(eq(customers.organizationId, organizationId)),
+    db.select().from(vouchers).where(eq(vouchers.organizationId, organizationId)),
+    db.select().from(networkSessions).where(eq(networkSessions.organizationId, organizationId)),
+    db.select().from(invoices).where(eq(invoices.organizationId, organizationId))
+  ]);
+
+  if (!orgData[0]) throw new Error("المؤسسة غير موجودة");
+
+  const exportPayload = {
+    exportedAt: new Date().toISOString(),
+    organization: orgData[0],
+    routers: routersData,
+    customers: customersData,
+    vouchers: vouchersData,
+    sessions: sessionsData,
+    invoices: invoicesData
+  };
+
+  return JSON.stringify(exportPayload, null, 2);
+}
