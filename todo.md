@@ -98,3 +98,7 @@
 
 - [x] تدقيق حراس الترقيم للقوائم وإضافة اختبار يرفض limit غير الصالح وoffset السالب في قائمة خطط المنصة.
 
+
+- [x] Create webhook table schema and idempotency transaction wrapper.
+- [x] Mount webhook REST endpoints outside of tRPC router for raw request consumption.
+- [x] Ensure automated test coverage for exactly-once webhook processing semantics.

@@ -93,3 +93,7 @@ The application natively includes:
 - **Health Checks**: `/health/liveness` (fast heartbeat) and `/health/readiness` (deep dependency checks).
 - **Background Worker**: A resilient network worker featuring exponential backoff, dead-letter logic, and distinct correlation IDs.
 - **Production Container**: A multi-stage Dockerfile that provides a stripped-down execution environment (`dist/`) requiring only standard environment variables to connect to an external DB/S3.
+
+## Webhooks and Idempotency
+All external systems pushing real-time state changes (e.g. payment gateway webhooks for SaaS billing) are routed through `/api/webhooks/*`.
+These endpoints must wrap business logic inside `processWebhookEventIdempotently` to guarantee exactly-once processing (Idempotency Key = `provider` + `eventId`).

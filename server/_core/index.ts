@@ -12,6 +12,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { startBackgroundJobWorker } from "../worker/backgroundJobWorker";
 import { getDb } from "../db";
+import { handlePaymentWebhook } from "../webhooks/payments";
 
 // Rate limiter for the authentication endpoints (login/register are the only
 // unauthenticated, credential-guessable tRPC procedures). Scoped to the
@@ -123,6 +124,8 @@ async function startServer() {
       res.status(503).json({ status: "error", message: "Database unavailable" });
     }
   });
+
+  app.post("/api/webhooks/payments", express.json({ limit: "1mb" }), handlePaymentWebhook);
 
   app.use("/api/radius/accounting", radiusRateLimiter, express.json({ limit: "256kb" }));
   app.use("/api/trpc", express.json({ limit: "10mb" }), express.urlencoded({ limit: "10mb", extended: true }));

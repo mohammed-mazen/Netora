@@ -38,6 +38,7 @@ import {
   organizations,
   platformInvoices,
   platformPayments,
+  webhookEvents,
   payments,
   pointLedgerEntries,
   pointsBenefitTiers,
@@ -2921,4 +2922,31 @@ export async function listPlatformPayments(options: { limit?: number; offset?: n
     invoiceNumber: platformInvoices.number,
     organizationName: organizations.name,
   }).from(platformPayments).innerJoin(organizations, eq(platformPayments.organizationId, organizations.id)).leftJoin(platformInvoices, eq(platformPayments.invoiceId, platformInvoices.id)).where(conditions).orderBy(desc(platformPayments.createdAt)).limit(pageSize(options.limit ?? 25)).offset(pageOffset(options.offset ?? 0));
+}
+
+export async function processWebhookEventIdempotently(
+  provider: string,
+  eventId: string,
+  payload: string,
+  handler: () => Promise<void>
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+
+  return db.transaction(async tx => {
+    // Check if the event already exists
+    const existing = await tx.select({ id: webhookEvents.id }).from(webhookEvents).where(and(eq(webhookEvents.provider, provider), eq(webhookEvents.eventId, eventId))).limit(1);
+    if (existing.length > 0) {
+      // Event already processed (idempotent return)
+      return false;
+    }
+
+    // Insert the event to claim it
+    await tx.insert(webhookEvents).values({ provider, eventId, payload });
+
+    // Execute the business logic
+    await handler();
+
+    return true;
+  });
 }

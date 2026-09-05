@@ -88,6 +88,14 @@ export const platformPayments = mysqlTable("platform_payments", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const webhookEvents = mysqlTable("webhook_events", {
+  id: int("id").autoincrement().primaryKey(),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  eventId: varchar("eventId", { length: 120 }).notNull().unique(),
+  payload: text("payload").notNull(),
+  processedAt: timestamp("processedAt").defaultNow().notNull(),
+});
+
 export const organizationSubscriptions = mysqlTable("organization_subscriptions", {
   id: int("id").autoincrement().primaryKey(),
   organizationId: int("organizationId").notNull().references(() => organizations.id),
