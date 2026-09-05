@@ -10,7 +10,7 @@
 // `claimNextJob`/`tick` loop for a real queue (e.g. BullMQ + Redis) without
 import { monitorSamples, monitorSettings } from "../../drizzle/schema";
 // touching the per-job-type handlers below.
-import { and, asc, eq, lt, lte, or } from "drizzle-orm";
+import { and, asc, eq, lt, lte, or, sql } from "drizzle-orm";
 import { backgroundJobs } from "../../drizzle/schema";
 import { getDb, getRouterById, getSessionForDisconnect, getTenantSmsMessageForDispatch, markSessionClosed, markTenantSmsMessageStatus, updateRouterHealthResult, updateTenantMonitorActionStatus, createTenantBackupJob } from "../db";
 import { checkRouterHealth, disconnectRouterSession, runRouterSystemCommand } from "../mikrotik";
@@ -19,6 +19,7 @@ import { dispatchTenantSms } from "../smsDispatch";
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_ATTEMPTS = 5;
+const VISIBILITY_TIMEOUT_MS = 5 * 60 * 1000;
 // Base backoff for exponential retry: 5s, 25s, 125s, 625s...
 const BASE_RETRY_BACKOFF_MS = 5_000;
 
@@ -59,32 +60,42 @@ export async function claimNextJob(): Promise<Job | null> {
   const db = await getDb();
   if (!db) return null;
 
-  // Deterministic FIFO ordering (oldest-created first) — without this, MySQL
-  // gives no guaranteed row order for an unordered SELECT, so under load
-  // (many due jobs from different tenants/tests) claimNextJob could pick an
-  // arbitrary eligible row instead of the actual longest-waiting one, which
-  // both starves old jobs and made test assertions non-deterministic when
-  // the shared dev DB had other due rows left over from earlier tests.
-  const candidates = await db
-    .select()
-    .from(backgroundJobs)
-    .where(
-      or(
-        eq(backgroundJobs.status, "queued"),
-        and(eq(backgroundJobs.status, "retrying"), lte(backgroundJobs.nextRetryAt, new Date())),
-      ),
-    )
-    .orderBy(asc(backgroundJobs.createdAt), asc(backgroundJobs.id))
-    .limit(1);
+  const now = new Date();
+  const visibilityCutoff = new Date(Date.now() - VISIBILITY_TIMEOUT_MS);
 
-  const job = candidates[0];
-  if (!job) return null;
+  // We use a transaction to atomically select and update the job to 'running'
+  return await db.transaction(async tx => {
+    // Select the oldest eligible job.
+    // We include jobs stuck in 'running' state past the visibility timeout.
+    // 'FOR UPDATE SKIP LOCKED' prevents multiple workers from waiting on the same row,
+    // they just skip it and grab the next available one.
+    const query = sql`
+      SELECT * FROM ${backgroundJobs}
+      WHERE (
+        status = 'queued'
+        OR (status = 'retrying' AND nextRetryAt <= ${now})
+        OR (status = 'running' AND updatedAt <= ${visibilityCutoff})
+      )
+      ORDER BY createdAt ASC, id ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `;
 
-  const nextAttempts = job.attempts + 1;
-  await db.update(backgroundJobs).set({ status: "running", attempts: nextAttempts }).where(eq(backgroundJobs.id, job.id));
-  // Return the post-update snapshot (not the pre-update row) so callers
-  // (executeJob's retry/max-attempts logic) see the correct attempts count.
-  return { ...job, status: "running", attempts: nextAttempts };
+    const candidates = await tx.execute(query);
+    const rows = candidates[0] as unknown as Job[];
+    const job = rows[0];
+
+    if (!job) return null;
+
+    const nextAttempts = job.status === 'running' ? job.attempts : job.attempts + 1;
+    await tx.update(backgroundJobs).set({
+      status: "running",
+      attempts: nextAttempts,
+      updatedAt: new Date() // reset visibility timer
+    }).where(eq(backgroundJobs.id, job.id));
+
+    return { ...job, status: "running", attempts: nextAttempts };
+  });
 }
 
 async function markSucceeded(jobId: number) {
