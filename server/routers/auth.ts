@@ -9,7 +9,7 @@ import { beginTwoFactorSetup, confirmTwoFactorSetup, disableTwoFactor, getTwoFac
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().refine(isValidEmail, "بريد إلكتروني غير صالح"),
-  password: z.string().refine(isValidPassword, "كلمة المرور يجب أن تكون بين 8 و200 حرف"),
+  password: z.string().refine(isValidPassword, "كلمة المرور يجب أن تكون 8 أحرف على الأقل، وتحتوي على حرف ورقم واحد على الأقل"),
 });
 
 const registerSchema = credentialsSchema.extend({
