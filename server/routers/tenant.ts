@@ -27,6 +27,9 @@ const trialInput = z.object({
 import { exportFullTenantData } from "../db";
 import { hashPassword } from "../_core/auth";
 import { eq } from "drizzle-orm";
+import { COOKIE_NAME } from "@shared/const";
+import { getSessionCookieOptions } from "../_core/cookies";
+import { auth } from "../_core/auth";
 
 export const tenantRouter = router({
   createTrial: publicProcedure.input(trialInput).mutation(async ({ input, ctx }) => {
@@ -83,6 +86,11 @@ export const tenantRouter = router({
                 status: "trialing",
             });
         }
+
+        // Log the user in
+        const token = await auth.createSessionToken(userId);
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
 
         return { success: true };
       });

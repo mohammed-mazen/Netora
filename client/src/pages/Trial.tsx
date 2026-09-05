@@ -12,14 +12,14 @@ export default function Trial() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data: user } = trpc.auth.me.useQuery();
 
-  const registerMutation = trpc.auth.register.useMutation();
-  const createTenantMutation = trpc.tenant.create.useMutation();
+  const createTrialMutation = trpc.tenant.createTrial.useMutation();
 
-  const isPending = registerMutation.isPending || createTenantMutation.isPending;
+  const isPending = createTrialMutation.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,9 +37,7 @@ export default function Trial() {
     }
 
     try {
-      let currentUserId = user?.id;
-
-      if (!currentUserId) {
+      if (!user) {
         if (!email.trim() || !password) {
           setFormError("البريد الإلكتروني وكلمة المرور مطلوبان لإنشاء الحساب");
           return;
@@ -48,22 +46,23 @@ export default function Trial() {
           setFormError("كلمة المرور يجب أن تكون 8 أحرف على الأقل");
           return;
         }
-
-        const newUser = await registerMutation.mutateAsync({
-          email: email.trim(),
-          password,
-          name: name.trim() || undefined,
-        });
-        utils.auth.me.setData(undefined, newUser);
-        currentUserId = newUser.id;
       }
 
-      await createTenantMutation.mutateAsync({
+      await createTrialMutation.mutateAsync({
         name: orgName.trim(),
         slug,
         timezone: "Asia/Riyadh",
         currency: "SAR",
+        email: user?.email || email.trim(),
+        password: password || "placeholder_password_since_user_exists",
+        userName: name.trim() || undefined,
+        phone: phone.trim() || undefined,
       });
+
+      // Fetch user again if it was a new registration
+      if (!user) {
+          await utils.auth.me.invalidate();
+      }
 
       await utils.tenant.listMine.invalidate();
       toast.success("تم إنشاء المؤسسة بنجاح!");
@@ -97,15 +96,28 @@ export default function Trial() {
 
           {!user && (
             <>
-              <div>
-                <label className="block text-sm font-medium mb-1">اسمك (اختياري)</label>
-                <input
-                  type="text"
-                  className="w-full border rounded-lg p-2"
-                  placeholder="الاسم الكامل"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">اسمك (اختياري)</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-lg p-2"
+                    placeholder="الاسم الكامل"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">رقم الهاتف (اختياري)</label>
+                  <input
+                    type="tel"
+                    dir="ltr"
+                    className="w-full border rounded-lg p-2 text-right"
+                    placeholder="+966 5x xxx xxxx"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">البريد الإلكتروني</label>
@@ -146,7 +158,7 @@ export default function Trial() {
             className="w-full flex items-center justify-center bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             disabled={isPending}
           >
-            {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : "إنشاء حسابي"}
+            {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : "إنشاء حسابي وبدء التجربة"}
           </button>
         </form>
         <div className="mt-8 text-center">
