@@ -64,7 +64,7 @@ export const tenantProcedure = protectedProcedure
       tenant = await resolveTenantAccess(ctx.user.id, input.organizationSlug);
     } catch (error) {
       console.error("[Tenant] Membership lookup failed", error);
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "تعذر التحقق من سياق المؤسسة الآن" });
+      throw new TRPCError({ code: "FORBIDDEN", message: "تعذر التحقق من سياق المؤسسة الآن" });
     }
 
     if (!tenant) {
