@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
-import { processWebhookEventIdempotently } from "../db";
+import { processWebhookEventIdempotently, getDb } from "../db";
+import { platformInvoices, platformPayments, organizationSubscriptions, organizations } from "../../drizzle/schema";
+import { eq, and } from "drizzle-orm";
 
 export async function handlePaymentWebhook(req: Request, res: Response) {
   try {
@@ -12,11 +14,43 @@ export async function handlePaymentWebhook(req: Request, res: Response) {
       eventId,
       payloadStr,
       async () => {
-        // Mocking the actual business logic for now since we don't have a specific
-        // payment provider SDK installed (e.g. Stripe). In a real implementation,
-        // this would parse the event payload, find the corresponding invoice or
-        // subscription, and update its state via db transactions.
         console.log(`[Webhooks] Processing payment event ${eventId} from ${provider}`);
+
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+
+        // Parse generic payment payload
+        // Example: { "invoiceNumber": "INV-123", "status": "paid", "amount": "99.00", "reference": "tx_456" }
+        const data = req.body;
+
+        if (!data || !data.invoiceNumber || !data.status) {
+          throw new Error("Invalid webhook payload format");
+        }
+
+        const invoice = await db.select().from(platformInvoices).where(eq(platformInvoices.number, data.invoiceNumber)).limit(1);
+
+        if (!invoice[0]) {
+           throw new Error(`Invoice ${data.invoiceNumber} not found`);
+        }
+
+        await db.transaction(async tx => {
+          if (data.status === "paid") {
+            await tx.update(platformInvoices).set({ status: "paid" }).where(eq(platformInvoices.id, invoice[0].id));
+            await tx.insert(platformPayments).values({
+              organizationId: invoice[0].organizationId,
+              invoiceId: invoice[0].id,
+              amount: data.amount || invoice[0].total,
+              method: "gateway",
+              status: "confirmed",
+              reference: data.reference || eventId
+            });
+            await tx.update(organizationSubscriptions).set({ status: "active" }).where(and(eq(organizationSubscriptions.organizationId, invoice[0].organizationId), eq(organizationSubscriptions.status, "past_due")));
+            await tx.update(organizations).set({ status: "active" }).where(eq(organizations.id, invoice[0].organizationId));
+          } else if (data.status === "failed") {
+            await tx.update(platformInvoices).set({ status: "overdue" }).where(eq(platformInvoices.id, invoice[0].id));
+            await tx.update(organizationSubscriptions).set({ status: "past_due" }).where(and(eq(organizationSubscriptions.organizationId, invoice[0].organizationId), eq(organizationSubscriptions.status, "active")));
+          }
+        });
       }
     );
 

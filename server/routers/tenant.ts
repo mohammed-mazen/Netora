@@ -10,7 +10,18 @@ const organizationInput = z.object({
   currency: z.string().trim().toUpperCase().length(3).default("SAR"),
 });
 
+import { exportFullTenantData } from "../db";
+
 export const tenantRouter = router({
+  exportData: tenantPermissionProcedure("accounting:read").mutation(async ({ ctx }) => {
+    try {
+      const payload = await exportFullTenantData(ctx.tenant.organizationId);
+      return { success: true, payload };
+    } catch (error) {
+      console.error("[Tenant] Failed to export data", error);
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "تعذر تصدير البيانات الآن" });
+    }
+  }),
   listMine: protectedProcedure.query(async ({ ctx }) => {
     try {
       return await listActiveTenantMemberships(ctx.user.id);

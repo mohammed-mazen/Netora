@@ -41,6 +41,16 @@ const apiRateLimiter = rateLimit({
   message: { error: "عدد كبير جدًا من الطلبات، الرجاء الإبطاء" },
 });
 
+// A stricter rate limiter targeted specifically at tenant operations (mutations/exports)
+// to prevent noisy neighbors or malicious scripts from exhausting the DB connection pool.
+const tenantOperationsLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  limit: 60, // 1 per second per IP roughly
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "عدد كبير جدًا من عمليات المؤسسة، الرجاء الإبطاء" },
+});
+
 // RADIUS accounting is called directly by FreeRADIUS (or an exec/rlm_rest
 // shim) for every Start/Interim-Update/Stop event across an entire ISP's
 // customer base — this can legitimately be a high-volume endpoint, so its
@@ -149,6 +159,9 @@ async function startServer() {
     const procedures = lastSegment.split(",");
     if (procedures.includes("auth.login") || procedures.includes("auth.register")) {
       return authRateLimiter(req, res, next);
+    }
+    if (procedures.some(p => p.startsWith("tenant.") || p.startsWith("workspace."))) {
+      return tenantOperationsLimiter(req, res, next);
     }
     return next();
   });

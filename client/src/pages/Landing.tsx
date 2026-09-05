@@ -15,8 +15,8 @@ export default function Landing() {
           <Link href="/contact" className="hover:text-blue-600">تواصل معنا</Link>
         </div>
         <div className="flex gap-4">
-          <Link href="/login" className="px-4 py-2 text-blue-600 font-medium hover:bg-blue-50 rounded-lg">تسجيل الدخول</Link>
-          <Link href="/trial" className="px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 rounded-lg">ابدأ التجربة المجانية</Link>
+          <Link href="/login" className="px-4 py-2 text-blue-600 font-medium hover:bg-blue-50 rounded-lg" aria-label="تسجيل الدخول إلى حسابك">تسجيل الدخول</Link>
+          <Link href="/trial" className="px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 rounded-lg" aria-label="ابدأ التجربة المجانية">ابدأ التجربة المجانية</Link>
         </div>
       </nav>
 
@@ -29,10 +29,10 @@ export default function Landing() {
           نظام سحابي قوي لإدارة شبكات WISP/WiFi متعدد المؤسسات، يشمل إدارة الراوترات، العملاء، الكروت، الفواتير، والمزيد من مكان واحد.
         </p>
         <div className="flex justify-center gap-4">
-          <Link href="/trial" className="px-8 py-4 bg-blue-600 text-white text-lg font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:shadow-blue-600/20 transition-all">
+          <Link href="/trial" className="px-8 py-4 bg-blue-600 text-white text-lg font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:shadow-blue-600/20 transition-all focus:ring-4 focus:ring-blue-300" aria-label="ابدأ التجربة المجانية الآن">
             ابدأ التجربة المجانية الآن
           </Link>
-          <Link href="/contact" className="px-8 py-4 bg-white text-slate-700 text-lg font-bold rounded-xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all">
+          <Link href="/contact" className="px-8 py-4 bg-white text-slate-700 text-lg font-bold rounded-xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all focus:ring-4 focus:ring-blue-300" aria-label="اطلب عرضاً مخصصاً">
             اطلب عرضاً
           </Link>
         </div>

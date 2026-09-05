@@ -183,3 +183,9 @@ Netora includes a standard GitHub Actions workflow (`.github/workflows/ci.yml`) 
 - Vite and esbuild production build (`npm run build`)
 - Drizzle schema migrations against a live containerized MariaDB
 - Comprehensive unit and integration testing via Vitest (`npm run test`)
+
+## Disaster Recovery and Data Export
+Netora implements safety protocols for both the central platform and individual tenants:
+- **Tenant Export**: Tenants can export their complete data profile (routers, customers, sessions, invoices, vouchers) as a unified JSON structure using the `exportData` TRPC mutation under the `tenant` router. This enables compliance with legal holds and simple backup validations.
+- **Restore Drills**: It is highly recommended to perform scheduled restore drills. The `exportData` output should be periodically verified against a fresh staging environment.
+- **Failover Procedures**: In the event of a primary Database failure, promote the replica, update the `DATABASE_URL` across all node/Docker workers, and restart the `pm2`/Docker instance. The application gracefully recovers connections.
