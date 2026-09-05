@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: netora
+      MARIADB_USER: netora
+      MARIADB_PASSWORD: netora
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=mysql://netora:netora@db:3306/netora
+      - JWT_SECRET=test_secret_for_compose_only
+      - SECRET_ENCRYPTION_KEY=1234567890123456789012345678901234567890123456789012345678901234
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npm run db:push && npm run start"
+
+volumes:
+  db_data:

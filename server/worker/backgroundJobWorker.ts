@@ -19,7 +19,8 @@ import { dispatchTenantSms } from "../smsDispatch";
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_ATTEMPTS = 5;
-const RETRY_BACKOFF_MS = 30_000;
+// Base backoff for exponential retry: 5s, 25s, 125s, 625s...
+const BASE_RETRY_BACKOFF_MS = 5_000;
 
 // Retention window for terminal jobs (succeeded/failed) — README "الخطوات
 // التالية الموصى بها" #9 flagged that background_jobs grows unbounded with
@@ -96,14 +97,20 @@ async function markFailedOrRetrying(job: Job, error: string) {
   const db = await getDb();
   if (!db) return;
   if (job.attempts >= MAX_ATTEMPTS) {
+    // Dead-letter logic
     await db.update(backgroundJobs).set({ status: "failed", lastError: error }).where(eq(backgroundJobs.id, job.id));
+    console.error(`[Worker] job ${job.id} (${job.type}) moved to dead-letter (failed permanently): ${error} [org: ${job.organizationId}]`);
     return;
   }
+  // Exponential backoff
+  const backoffMs = BASE_RETRY_BACKOFF_MS * Math.pow(5, job.attempts - 1);
+  const nextRetryAt = new Date(Date.now() + backoffMs);
   await db.update(backgroundJobs).set({
     status: "retrying",
     lastError: error,
-    nextRetryAt: new Date(Date.now() + RETRY_BACKOFF_MS * job.attempts),
+    nextRetryAt,
   }).where(eq(backgroundJobs.id, job.id));
+  console.warn(`[Worker] job ${job.id} (${job.type}) failed attempt ${job.attempts}/${MAX_ATTEMPTS}, retrying at ${nextRetryAt.toISOString()}: ${error} [org: ${job.organizationId}]`);
 }
 
 async function handleRouterHealthCheck(job: Job): Promise<{ ok: boolean; error?: string }> {
@@ -198,6 +205,8 @@ async function handleSmsSend(job: Job): Promise<{ ok: boolean; error?: string }>
 
 /** Exported for direct testing — runs one job's handler + success/failure persistence without the poll loop. */
 export async function executeJob(job: Job) {
+  const correlationId = `job-${job.id}-${Date.now()}`;
+  console.log(`[Worker] [${correlationId}] Starting job ${job.id} (${job.type}) for org ${job.organizationId}`);
   let outcome: { ok: boolean; error?: string };
   try {
     switch (job.type) {
@@ -233,9 +242,10 @@ export async function executeJob(job: Job) {
   }
 
   if (outcome.ok) {
+    console.log(`[Worker] [${correlationId}] job ${job.id} (${job.type}) succeeded`);
     await markSucceeded(job.id);
   } else {
-    console.warn(`[Worker] job ${job.id} (${job.type}) failed: ${outcome.error}`);
+    console.warn(`[Worker] [${correlationId}] job ${job.id} (${job.type}) failed: ${outcome.error}`);
     await markFailedOrRetrying(job, outcome.error ?? "فشل غير معروف");
   }
 }
