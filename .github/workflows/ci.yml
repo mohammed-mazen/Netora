@@ -1,0 +1,55 @@
+name: Netora CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: netora
+        ports:
+          - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v3
+      with:
+        version: 10
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Type Check
+      run: pnpm run check
+
+    - name: Build
+      run: pnpm run build
+
+    - name: Migrate Database
+      run: pnpm run db:push
+      env:
+        DATABASE_URL: mysql://root:root@127.0.0.1:3306/netora
+
+    - name: Test
+      run: pnpm run test
+      env:
+        DATABASE_URL: mysql://root:root@127.0.0.1:3306/netora
+        JWT_SECRET: testing_secret
+        SECRET_ENCRYPTION_KEY: 1234567890123456789012345678901234567890123456789012345678901234

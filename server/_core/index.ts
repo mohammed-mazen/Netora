@@ -11,6 +11,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { startBackgroundJobWorker } from "../worker/backgroundJobWorker";
+import { getDb } from "../db";
 
 // Rate limiter for the authentication endpoints (login/register are the only
 // unauthenticated, credential-guessable tRPC procedures). Scoped to the
@@ -111,6 +112,18 @@ async function startServer() {
   //     superjson/JSON framing overhead and tRPC batching of multiple calls
   //     in one request — 10mb comfortably covers that with headroom.
   //   - everything else (storage proxy, static assets): no body expected.
+  // Health checks
+  app.get("/health/liveness", (req, res) => res.json({ status: "ok" }));
+  app.get("/health/readiness", async (req, res) => {
+    try {
+      const db = await getDb();
+      if (!db) throw new Error("DB not ready");
+      res.json({ status: "ok" });
+    } catch (e) {
+      res.status(503).json({ status: "error", message: "Database unavailable" });
+    }
+  });
+
   app.use("/api/radius/accounting", radiusRateLimiter, express.json({ limit: "256kb" }));
   app.use("/api/trpc", express.json({ limit: "10mb" }), express.urlencoded({ limit: "10mb", extended: true }));
 

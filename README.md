@@ -169,3 +169,17 @@ docker run -d --name netora -p 3000:3000 --env-file .env netora
 2026-08-28 (تحديث لاحق) — إصلاح عزل NAS-Identifier عبر المؤسسات (فريد على مستوى المنصة)، تجاوز TLS الذاتي لراوترات MikroTik عبر `undici`، تفعيل Helmet + Rate Limiting (auth/عام/RADIUS) + حدود body لكل مسار، تقسيم حزمة الواجهة الأمامية (506KB → ~352KB). 58/58 اختبار ناجح، tsc نظيف، build ناجح. **ملاحظة مهمة**: البنود التالية من مراجعة الكود لم تُنفَّذ بعد — راجع "الخطوات التالية الموصى بها": تعقيد كلمة المرور، قفل الحساب بعد محاولات فاشلة، توحيد router_identity_read/health_check، تنظيف دوري لـ background_jobs، جدولة تلقائية لفحوصات الصحة، تحسين السجلات البنيوية.
 
 2026-08-29 — **إضافة 11 وحدة كاملة جديدة** لموازاة apluswifi.com/demo.apluswifi.com: المحاسبة، فئات/مجموعات البطاقات، استوديو تصميم البطاقات، الأدوار المخصّصة، مُنشئ التقارير، النسخ الاحتياطي، مراقبة الخادم (بنية تنبيهات Telegram)، النقاط والولاء، بوابة SMS، المسابقات، والدعم المباشر (Live Chat) — كل وحدة تتضمّن راوتر tRPC كامل + جدول/جداول Drizzle + لوحة React مربوطة بالكامل في `Home.tsx` (تنقّل من 3 إلى 8 مجموعات). تم إصلاح خلل نظامي كان يفتقد `organizationSlug` في مدخلات كل استدعاءات الـ11 لوحة الجديدة. أُضيفت migration واحدة (`0004_spotty_the_hand.sql`) لـ26+ جدولًا جديدًا (60 جدولًا إجماليًا بعد التطبيق). **إصلاح خلل حقيقي في طابور المهام الخلفية**: `claimNextJob()` في `server/worker/backgroundJobWorker.ts` كان يعتمد على ترتيب غير محدَّد لصفوف MySQL (لا `ORDER BY`)، مما يعني نظريًا أنه قد "يُجوِّع" (starve) أقدم مهمة مستحقة تحت الحمل — تمت إضافة ترتيب FIFO حقيقي (`ORDER BY createdAt, id`). كما أُضيف تنظيف استباقي (`drainQueue`) في `server/worker/backgroundJobWorker.test.ts` قبل كل اختبار لضمان نتائج حتمية على قاعدة البيانات المشتركة الحقيقية. **النتيجة النهائية**: `tsc --noEmit` نظيف تمامًا، `npm run build` ناجح (37 حزمة JS منفصلة تشمل الـ11 لوحة الجديدة)، ومجموعة الاختبارات الكاملة **14/14 ملف، 60/60 اختبار ناجح** (0 اختبارات فاشلة، مقارنة بـ5/60 فاشلة متقطّعة قبل الإصلاح).
+
+### Running with Docker Compose (Local / Staging)
+You can bring up the entire platform including the MariaDB database using Docker Compose:
+```bash
+docker-compose up --build
+```
+This sets up a containerized DB on port 3306 and the Netora application on port 3000. It also automatically applies schema migrations (`db:push`) on startup.
+
+### CI/CD
+Netora includes a standard GitHub Actions workflow (`.github/workflows/ci.yml`) that validates:
+- Type checking (`npm run check`)
+- Vite and esbuild production build (`npm run build`)
+- Drizzle schema migrations against a live containerized MariaDB
+- Comprehensive unit and integration testing via Vitest (`npm run test`)

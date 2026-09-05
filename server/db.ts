@@ -36,6 +36,8 @@ import {
   organizationMembers,
   organizationSubscriptions,
   organizations,
+  platformInvoices,
+  platformPayments,
   payments,
   pointLedgerEntries,
   pointsBenefitTiers,
@@ -2886,4 +2888,37 @@ export async function restoreTenantBackup(input: { organizationId: number; userI
     await db.update(backupJobs).set({ status: "failed", errorMessage: error instanceof Error ? error.message : "فشل الاستعادة" }).where(eq(backupJobs.id, input.backupJobId));
     throw error;
   }
+}
+
+export async function listPlatformInvoices(options: { limit?: number; offset?: number; search?: string } = {}) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const term = options.search?.trim();
+  const conditions = term ? or(like(platformInvoices.number, `%${term}%`), like(organizations.name, `%${term}%`)) : undefined;
+  return db.select({
+    id: platformInvoices.id,
+    number: platformInvoices.number,
+    status: platformInvoices.status,
+    total: platformInvoices.total,
+    issuedAt: platformInvoices.issuedAt,
+    dueAt: platformInvoices.dueAt,
+    organizationName: organizations.name,
+    organizationSlug: organizations.slug,
+  }).from(platformInvoices).innerJoin(organizations, eq(platformInvoices.organizationId, organizations.id)).where(conditions).orderBy(desc(platformInvoices.createdAt)).limit(pageSize(options.limit ?? 25)).offset(pageOffset(options.offset ?? 0));
+}
+
+export async function listPlatformPayments(options: { limit?: number; offset?: number; search?: string } = {}) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const term = options.search?.trim();
+  const conditions = term ? or(like(platformPayments.reference, `%${term}%`), like(platformInvoices.number, `%${term}%`)) : undefined;
+  return db.select({
+    id: platformPayments.id,
+    amount: platformPayments.amount,
+    method: platformPayments.method,
+    status: platformPayments.status,
+    reference: platformPayments.reference,
+    invoiceNumber: platformInvoices.number,
+    organizationName: organizations.name,
+  }).from(platformPayments).innerJoin(organizations, eq(platformPayments.organizationId, organizations.id)).leftJoin(platformInvoices, eq(platformPayments.invoiceId, platformInvoices.id)).where(conditions).orderBy(desc(platformPayments.createdAt)).limit(pageSize(options.limit ?? 25)).offset(pageOffset(options.offset ?? 0));
 }

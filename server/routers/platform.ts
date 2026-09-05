@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { assignPlatformOrganizationSubscription, createPlatformSubscriptionPlan, listPlatformOrganizations, listPlatformOrganizationSubscriptions, listPlatformSubscriptionPlans, listPlatformSupportTickets, recordAuditEvent } from "../db";
+import { assignPlatformOrganizationSubscription, createPlatformSubscriptionPlan, listPlatformOrganizations, listPlatformOrganizationSubscriptions, listPlatformSubscriptionPlans, listPlatformSupportTickets, recordAuditEvent, listPlatformInvoices, listPlatformPayments } from "../db";
 import { adminProcedure, router } from "../_core/trpc";
 
 function platformError(error: unknown, fallback: string): never {
@@ -49,5 +49,15 @@ export const platformRouter = router({
       await recordAuditEvent({ organizationId: null, actorUserId: ctx.user.id, action: "platform_subscription.assign", resourceType: "organization_subscription", resourceId: String(subscription.id), requestId: (Array.isArray(header) ? header[0] : header)?.slice(0, 100) || crypto.randomUUID(), outcome: "success", metadata: { organizationId: input.organizationId, planId: input.planId, status: input.status } });
       return subscription;
     } catch (error) { return platformError(error, "تعذر إسناد اشتراك المؤسسة الآن"); }
+  }),
+  billing: router({
+    listInvoices: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(25), offset: z.number().int().min(0).default(0), search: z.string().trim().max(120).optional() })).query(async ({ input }) => {
+      try { return await listPlatformInvoices(input); }
+      catch (error) { return platformError(error, "تعذر تحميل فواتير المنصة الآن"); }
+    }),
+    listPayments: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(25), offset: z.number().int().min(0).default(0), search: z.string().trim().max(120).optional() })).query(async ({ input }) => {
+      try { return await listPlatformPayments(input); }
+      catch (error) { return platformError(error, "تعذر تحميل دفعات المنصة الآن"); }
+    }),
   }),
 });

@@ -84,3 +84,12 @@
 
 [1]: https://help.mikrotik.com/docs/spaces/ROS/pages/328097/RADIUS "MikroTik RouterOS RADIUS"
 [2]: https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API "MikroTik RouterOS REST API"
+
+## Operational Guides & CI/CD
+Netora provides a full CI/CD lifecycle pipeline using GitHub Actions, ensuring every commit passes TS checks and Vitest logic (including Database integrations).
+Local development and staging can leverage `docker-compose.yml` to effortlessly spin up a reproducible environment containing the NodeJS application and the MariaDB server.
+
+The application natively includes:
+- **Health Checks**: `/health/liveness` (fast heartbeat) and `/health/readiness` (deep dependency checks).
+- **Background Worker**: A resilient network worker featuring exponential backoff, dead-letter logic, and distinct correlation IDs.
+- **Production Container**: A multi-stage Dockerfile that provides a stripped-down execution environment (`dist/`) requiring only standard environment variables to connect to an external DB/S3.
