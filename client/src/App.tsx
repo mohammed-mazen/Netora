@@ -10,6 +10,10 @@ import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
 import Contact from "./pages/Contact";
 import Trial from "./pages/Trial";
+import FAQ from "./pages/FAQ";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import License from "./pages/License";
 
 import Dashboard from "./pages/Dashboard";
 import Platform from "./pages/Platform";
@@ -23,6 +27,10 @@ function Router() {
       <Route path="/features" component={Features} />
       <Route path="/contact" component={Contact} />
       <Route path="/trial" component={Trial} />
+      <Route path="/faq" component={FAQ} />
+      <Route path="/privacy" component={Privacy} />
+      <Route path="/terms" component={Terms} />
+      <Route path="/license" component={License} />
 
       <Route path="/login" component={Login} />
       <Route path="/dashboard" component={Dashboard} />
