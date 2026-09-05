@@ -64,6 +64,30 @@ export const organizations = mysqlTable("organizations", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const platformInvoices = mysqlTable("platform_invoices", {
+  id: int("id").autoincrement().primaryKey(),
+  organizationId: int("organizationId").notNull().references(() => organizations.id),
+  number: varchar("number", { length: 80 }).notNull().unique(),
+  status: mysqlEnum("status", ["draft", "issued", "paid", "void", "overdue"]).default("draft").notNull(),
+  total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  issuedAt: timestamp("issuedAt"),
+  dueAt: timestamp("dueAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const platformPayments = mysqlTable("platform_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  organizationId: int("organizationId").notNull().references(() => organizations.id),
+  invoiceId: int("invoiceId").references(() => platformInvoices.id),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  method: mysqlEnum("method", ["bank", "gateway", "manual"]).notNull(),
+  status: mysqlEnum("status", ["pending", "confirmed", "failed", "refunded"]).default("pending").notNull(),
+  reference: varchar("reference", { length: 160 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const organizationSubscriptions = mysqlTable("organization_subscriptions", {
   id: int("id").autoincrement().primaryKey(),
   organizationId: int("organizationId").notNull().references(() => organizations.id),

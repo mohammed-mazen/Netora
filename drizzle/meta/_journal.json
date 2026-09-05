@@ -43,6 +43,13 @@
       "when": 1788056819029,
       "tag": "0005_bumpy_bloodscream",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1788567894850,
+      "tag": "0006_parallel_speedball",
+      "breakpoints": true
     }
   ]
 }
