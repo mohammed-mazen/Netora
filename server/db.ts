@@ -1165,7 +1165,7 @@ export async function issueTenantInvoice(input: { organizationId: number; userId
 export async function recordTenantPayment(input: { organizationId: number; userId: number; invoiceId: number; amount: string; method: "cash" | "bank" | "gateway" | "credit"; reference?: string | null }) {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة لتسجيل الدفعة");
-  const invoice = await db.select({ id: invoices.id, number: invoices.number, total: invoices.total, status: invoices.status }).from(invoices)
+  const invoice = await db.select({ id: invoices.id, customerId: invoices.customerId, number: invoices.number, total: invoices.total, status: invoices.status }).from(invoices)
     .where(and(eq(invoices.id, input.invoiceId), eq(invoices.organizationId, input.organizationId))).limit(1);
   if (!invoice[0]) throw new Error("الفاتورة المحددة لا تتبع للمؤسسة");
   if (invoice[0].status !== "issued" && invoice[0].status !== "overdue") throw new Error("لا يمكن تسجيل دفعة لهذه الفاتورة في حالتها الحالية");
@@ -1184,7 +1184,30 @@ export async function recordTenantPayment(input: { organizationId: number; userI
     if (compareMoney(newPaidTotal, invoiceTotal) === 0) await tx.update(invoices).set({ status: "paid" }).where(and(eq(invoices.id, input.invoiceId), eq(invoices.organizationId, input.organizationId)));
     return { paymentId };
   });
-  return { id: payment.paymentId, reference: paymentReference, invoiceStatus: compareMoney(newPaidTotal, invoiceTotal) === 0 ? "paid" as const : invoice[0].status };
+
+  const invoiceStatus = compareMoney(newPaidTotal, invoiceTotal) === 0 ? "paid" as const : invoice[0].status;
+
+  if (invoiceStatus === "paid") {
+    const pointsSettingsRow = await getTenantPointsSettings(input.organizationId);
+    const award = invoicePointsToAward({
+      isEnabled: pointsSettingsRow.isEnabled,
+      minimumAmount: String(pointsSettingsRow.minimumAmount),
+      invoiceTotal: invoiceTotal,
+      customerId: invoice[0].customerId,
+    });
+    if (award) {
+      await postTenantPointLedgerEntry({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        customerId: award.customerId,
+        kind: award.kind,
+        points: award.points,
+        reason: `دفع فاتورة ${invoice[0].number}`,
+      });
+    }
+  }
+
+  return { id: payment.paymentId, reference: paymentReference, invoiceStatus };
 }
 
 export async function recordTenantPaymentRefund(input: { organizationId: number; userId: number; paymentId: number }) {
@@ -1648,12 +1671,12 @@ export async function generateTenantReportExport(input: { organizationId: number
   const payload = reportExportPayload(format, definition[0].name, columns, rows);
   const safeName = definition[0].name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const { storagePut } = await import("./storage");
-  const { key } = await storagePut(`organizations/${input.organizationId}/report/${Date.now()}_${safeName}.${payload.extension}`, payload.body, payload.mimeType);
+  const { key, url } = await storagePut(`organizations/${input.organizationId}/report/${Date.now()}_${safeName}.${payload.extension}`, payload.body, payload.mimeType);
   return db.transaction(async tx => {
     const fileResult = await tx.insert(files).values({ organizationId: input.organizationId, storageKey: key, originalName: payload.originalName, mimeType: payload.mimeType, sizeBytes: payload.body.length, category: "report", createdByUserId: input.userId });
     const fileId = Number(fileResult[0]?.insertId);
     const exportResult = await tx.insert(reportExports).values({ organizationId: input.organizationId, reportDefinitionId: input.reportDefinitionId, fileId, status: "ready", rowCount: rows.length, createdByUserId: input.userId });
-    return { id: Number(exportResult[0]?.insertId), fileId, rowCount: rows.length, status: "ready" as const, format };
+    return { id: Number(exportResult[0]?.insertId), fileId, fileKey: key, fileUrl: url, rowCount: rows.length, status: "ready" as const, format };
   });
 }
 
