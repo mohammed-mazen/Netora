@@ -1,0 +1,3 @@
+## 2024-05-15 - ARIA Labels for Icon-Only Buttons in Main Navigation
+**Learning:** Found several pure icon-only buttons (`<X />`, `<PanelRight />`, `<Bell />`) used for critical navigation tasks (opening/closing sidebars, viewing notifications) across key layout files (`Dashboard.tsx`, `Platform.tsx`) that lacked `aria-label` attributes. Without these, screen readers announce them as "button" or read the SVG content, providing no context.
+**Action:** Always add descriptive `aria-label` tags (e.g., `aria-label="إغلاق القائمة"`) to pure icon buttons, especially those that toggle main navigation or global panels.
