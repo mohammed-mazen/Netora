@@ -21,6 +21,7 @@
 
 import { Agent } from "undici";
 import { resolveRouterCredential } from "./secrets";
+import { MikrotikApiSslClient } from "./mikrotik_api";
 import { buildRouterCommand, type MonitorAction } from "./monitorActions";
 
 const REQUEST_TIMEOUT_MS = 8000;
@@ -150,8 +151,47 @@ export async function disconnectRouterSession(
   if (!credential) {
     return { ok: false, error: "لا توجد بيانات اعتماد محفوظة لهذا الراوتر" };
   }
-  const authHeader = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+
   const listPath = input.protocol === "hotspot" ? "/ip/hotspot/active" : "/ppp/active";
+
+  if (router.connectionMode === "api_ssl") {
+     const host = router.managementAddress.includes("://") ? router.managementAddress.replace(/^https?:\/\//, "") : router.managementAddress;
+     let port = 8729;
+     let hostOnly = host;
+     if (host.includes(":")) {
+         const parts = host.split(":");
+         hostOnly = parts[0];
+         port = parseInt(parts[1], 10);
+     }
+
+     const client = new MikrotikApiSslClient(hostOnly, port, REQUEST_TIMEOUT_MS);
+     try {
+         await client.connect();
+         await client.login(credential.username, credential.password);
+
+         const cmdPath = listPath + "/print";
+         const entries = await client.execute(cmdPath);
+
+         const match = entries.find(entry => entry.user === input.sessionIdentifier || entry.name === input.sessionIdentifier || entry["mac-address"] === input.sessionIdentifier);
+         if (!match || !match[".id"]) {
+             client.disconnect();
+             return { ok: false, error: "لم يتم العثور على جلسة نشطة مطابقة على الراوتر" };
+         }
+
+         const rmCmdPath = listPath + "/remove";
+         await client.execute(rmCmdPath, { ".id": match[".id"] });
+         client.disconnect();
+         return { ok: true };
+     } catch (error: any) {
+         client.disconnect();
+         if (error.message.includes("Timeout")) {
+              return { ok: false, error: `انتهت مهلة الاتصال بالراوتر (${REQUEST_TIMEOUT_MS}ms)` };
+         }
+         return { ok: false, error: `تعذر قطع الجلسة: ${error.message}` };
+     }
+  }
+
+  const authHeader = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
 
   try {
     const listRes = await fetchWithTimeout(buildRestUrl(router.managementAddress, listPath), {
@@ -193,8 +233,38 @@ export async function runRouterSystemCommand(router: RouterTarget, action: Monit
   if (!credential) {
     return { ok: false, error: "لا توجد بيانات اعتماد محفوظة لهذا الراوتر — أضف اسم المستخدم وكلمة المرور أولاً" };
   }
-  const authHeader = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+
   const command = buildRouterCommand(action);
+
+  if (router.connectionMode === "api_ssl") {
+     const host = router.managementAddress.includes("://") ? router.managementAddress.replace(/^https?:\/\//, "") : router.managementAddress;
+     let port = 8729;
+     let hostOnly = host;
+     if (host.includes(":")) {
+         const parts = host.split(":");
+         hostOnly = parts[0];
+         port = parseInt(parts[1], 10);
+     }
+
+     const client = new MikrotikApiSslClient(hostOnly, port, REQUEST_TIMEOUT_MS);
+     try {
+         await client.connect();
+         await client.login(credential.username, credential.password);
+
+         await client.execute(command.path);
+
+         client.disconnect();
+         return { ok: true };
+     } catch (error: any) {
+         client.disconnect();
+         if (error.message.includes("Timeout")) {
+              return { ok: false, error: `انتهت مهلة الاتصال بالراوتر (${REQUEST_TIMEOUT_MS}ms) — تحقق من الشبكة/الجدار الناري` };
+         }
+         return { ok: false, error: `تعذر تنفيذ ${action} على الراوتر: ${error.message}` };
+     }
+  }
+
+  const authHeader = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
 
   try {
     const res = await fetchWithTimeout(buildRestUrl(router.managementAddress, command.path), {
