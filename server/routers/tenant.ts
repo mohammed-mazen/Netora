@@ -47,7 +47,11 @@ export const tenantRouter = router({
 
         let userId: number;
         if (user) {
-           throw new Error("البريد الإلكتروني مسجل مسبقاً في النظام. يرجى تسجيل الدخول أولاً ثم إنشاء المؤسسة، أو استخدام بريد آخر.");
+           // For an existing user creating a trial, we check if they are ALREADY authenticated via Context
+           if (!ctx.user || ctx.user.id !== user.id) {
+               throw new Error("البريد الإلكتروني مسجل مسبقاً في النظام. يرجى تسجيل الدخول أولاً ثم إنشاء المؤسسة، أو استخدام بريد آخر.");
+           }
+           userId = user.id;
         } else {
            const { hashPassword } = await import("../_core/auth");
            const passwordHash = await hashPassword(input.password);
