@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: netora-app
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: starter
+    region: frankfurt
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render does not natively provide managed MySQL. Using a placeholder or
+      # external database is recommended. Below assumes an external MySQL DB URL.
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_ENCRYPTION_KEY
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
