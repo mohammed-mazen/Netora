@@ -60,7 +60,8 @@ export class MikrotikApiSslClient {
             this.socket = tls.connect({
                 host: this.host,
                 port: this.port,
-                rejectUnauthorized: false
+                // Ensure certificate verification is strict as per Sec. 8.7
+                rejectUnauthorized: true
             }, () => {
                 clearTimeout(timeout);
                 resolve();
@@ -83,6 +84,18 @@ export class MikrotikApiSslClient {
     private readWord(): Promise<string> {
         return new Promise((resolve, reject) => {
             if (!this.socket) return reject(new Error("Not connected"));
+
+            const onEnd = () => reject(new Error("Socket closed unexpectedly"));
+            const onError = (err: Error) => reject(err);
+            this.socket.once('end', onEnd);
+            this.socket.once('error', onError);
+
+            const cleanup = () => {
+                if (this.socket) {
+                    this.socket.removeListener('end', onEnd);
+                    this.socket.removeListener('error', onError);
+                }
+            };
 
             const readLen = () => {
                 const lenBuf = this.socket!.read(1);
@@ -174,7 +187,10 @@ export class MikrotikApiSslClient {
             const processNext = async () => {
                 try {
                     const reply = await this.readSentence();
-                    if (reply.length === 0) return;
+                    if (reply.length === 0) {
+                        resolve(results);
+                        return;
+                    }
 
                     const replyType = reply[0];
                     if (replyType === '!done') {
