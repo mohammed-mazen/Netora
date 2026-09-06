@@ -18,7 +18,7 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       watch: false,
-      max_memory_restart: "512M",
+      max_memory_restart: "1G",
       // .env is loaded at runtime by `dotenv/config` (see server/_core/index.ts),
       // so PM2 only needs to guarantee NODE_ENV here.
       env: {

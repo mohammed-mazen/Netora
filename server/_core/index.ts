@@ -10,8 +10,8 @@ import { registerRadiusAccountingRoute } from "../radiusAccounting";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { startBackgroundJobWorker } from "../worker/backgroundJobWorker";
-import { getDb } from "../db";
+import { startBackgroundJobWorker, stopBackgroundJobWorker } from "../worker/backgroundJobWorker";
+import { getDb, connectionPool } from "../db";
 import { handlePaymentWebhook } from "../webhooks/payments";
 
 // Rate limiter for the authentication endpoints (login/register are the only
@@ -76,6 +76,12 @@ function isPortAvailable(port: number): Promise<boolean> {
 }
 
 async function findAvailablePort(startPort: number = 3000): Promise<number> {
+  if (process.env.NODE_ENV === "production") {
+    if (await isPortAvailable(startPort)) {
+      return startPort;
+    }
+    throw new Error(`Port ${startPort} is already in use.`);
+  }
   for (let port = startPort; port < startPort + 20; port++) {
     if (await isPortAvailable(port)) {
       return port;
@@ -196,6 +202,36 @@ async function startServer() {
   // this should be split into a dedicated PM2 process (see ecosystem.config.cjs)
   // to avoid duplicate job processing.
   startBackgroundJobWorker();
+
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    console.log(`
+[${signal}] Shutting down gracefully...`);
+    stopBackgroundJobWorker();
+    console.log('Background worker stopped.');
+    server.close(async () => {
+      console.log('HTTP server closed.');
+      if (connectionPool) {
+        console.log('Closing database connection pool...');
+        await connectionPool.end();
+        console.log('Database connection pool closed.');
+      }
+      process.exit(0);
+    });
+
+    // Force exit after timeout
+    setTimeout(() => {
+      console.error('Could not close connections in time, forcefully shutting down');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    shutdown('uncaughtException');
+  });
 }
 
 startServer().catch(console.error);
