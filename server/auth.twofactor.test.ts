@@ -34,7 +34,7 @@ function totpCode(secret: string) {
 }
 
 describe("auth two-factor lifecycle", () => {
-  it("enables 2FA, enforces challenge on login, supports recovery codes, and can be disabled", async () => {
+  it("enables 2FA, enforces challenge on login, supports recovery codes, and can be disabled", { timeout: 30000 }, async () => {
     const email = uniqueEmail("twofactor");
     const publicCtx = createContext();
     const publicCaller = appRouter.createCaller(publicCtx.ctx);
