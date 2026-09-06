@@ -47,7 +47,7 @@ const REQUEST_TIMEOUT_MS = 8000;
 // Not currently configurable per-router; if a future tenant needs strict
 // verification (e.g. a router reachable over the public internet with a
 // proper cert), this would need to become a per-router opt-in flag.
-const insecureRouterAgent = new Agent({ connect: { rejectUnauthorized: false } });
+const insecureRouterAgent = new Agent({ connect: { rejectUnauthorized: process.env.NODE_ENV === "production" } });
 
 export type MikrotikHealthResult = {
   ok: boolean;

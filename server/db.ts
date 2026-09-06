@@ -1,5 +1,6 @@
 import { and, count, desc, eq, inArray, like, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import {
   alertRules,
   apiTokens,
@@ -85,12 +86,17 @@ import { ENV } from './_core/env';
 import { ACCOUNT_LOCKOUT_DURATION_MS, ACCOUNT_LOCKOUT_THRESHOLD } from "@shared/const";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+export let connectionPool: import("mysql2/promise").Pool | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      connectionPool = mysql.createPool({
+        uri: process.env.DATABASE_URL,
+        connectionLimit: 20,
+      });
+      _db = drizzle(connectionPool as any);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
