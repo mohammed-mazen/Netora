@@ -47,8 +47,9 @@ export const tenantRouter = router({
 
         let userId: number;
         if (user) {
-           userId = user.id;
+           throw new Error("البريد الإلكتروني مسجل مسبقاً في النظام. يرجى تسجيل الدخول أولاً ثم إنشاء المؤسسة، أو استخدام بريد آخر.");
         } else {
+           const { hashPassword } = await import("../secrets");
            const passwordHash = await hashPassword(input.password);
            const result = await tx.insert(users).values({
                email: input.email,
