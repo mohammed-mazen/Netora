@@ -33,7 +33,24 @@ This report summarizes the comprehensive security and architectural transformati
 * **Lease Fencing:** Added `leaseOwner` and `leaseVersion` columns to the `background_jobs` table via a new Drizzle migration. The worker generates a unique ID on startup and increments the `leaseVersion` upon claiming a job. All subsequent state mutations (`markSucceeded`, `markFailedOrRetrying`) strictly enforce `WHERE id = ? AND leaseOwner = ? AND leaseVersion = ?`.
 * **No-ops:** The `radius_policy_projection` handler was updated to explicitly fail with `{ ok: false, error: "radius_policy_projection is not supported" }`, preventing silent capability assumptions.
 
-## 7. Mandatory Final Questions
+
+## 8. Worker Tenant Ownership (P1 Fixed)
+**Finding:** Background worker handlers trusted payload identifiers without verifying that the loaded resource belonged to the tenant owning the job.
+**Fix:** Explicit `organizationId` matching was added to all worker handlers (`handleRouterHealthCheck`, `handleRadiusDisconnect`, `handleMonitorAlertDispatch`, etc.) preventing cross-tenant leakage.
+
+## 9. Readiness Truth (P1 Fixed)
+**Finding:** The `app.get("/health/readiness")` endpoint previously only checked if a DB object was instantiated, not if the connection was functional.
+**Fix:** Updated the readiness endpoint to execute a bounded database query (`SELECT 1`) with a timeout, accurately reflecting the system's operational state.
+
+## 10. File Content Validation (P1 Fixed)
+**Finding:** File upload merely trusted the client-provided MIME type and extension without validating content.
+**Fix:** Added Magic Bytes signature verification in `server/fileService.ts` for sensitive types like PDF (`%PDF`) and XLSX (`PK\x03\x04`).
+
+## 11. Session Revocation (P1 Fixed)
+**Finding:** Netora used JWT sessions but lacked a mechanism for true global revocation upon logout or password change.
+**Fix:** Added a `sessionVersion` integer to the `users` table. The `auth.createSessionToken` injects this version into the JWT. `auth.authenticateRequest` now explicitly verifies that the JWT's version matches the DB. Logout increments this version, securely revoking all active sessions instantly.
+
+## 12. Mandatory Final Questions
 
 **1. Can a tenant user access another tenant's data through any API, file, report, job or identifier path?**
 No. All APIs (including the updated `storageProxy.ts`) strictly evaluate `organizationId` against the user's authenticated `organizationMembers` identity.
