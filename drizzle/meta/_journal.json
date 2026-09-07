@@ -71,6 +71,13 @@
       "when": 1788754360837,
       "tag": "0009_youthful_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1788802636689,
+      "tag": "0010_remarkable_wolfpack",
+      "breakpoints": true
     }
   ]
 }

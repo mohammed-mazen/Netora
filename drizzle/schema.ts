@@ -1,3 +1,4 @@
+import { relations } from "drizzle-orm";
 import {
   decimal,
   index,
@@ -8,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
   varchar,
+  json,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -1161,3 +1163,45 @@ export const dynamicSettingsItems = mysqlTable("dynamic_settings_items", {
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+export const networkChangeJournal = mysqlTable("network_change_journal", {
+  id: int("id").primaryKey().autoincrement(),
+  organizationId: int("organizationId")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  routerId: int("routerId")
+    .references(() => routers.id, { onDelete: "cascade" }),
+  actorId: int("actorId")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  intent: varchar("intent", { length: 255 }).notNull(),
+  desiredState: json("desiredState").notNull(),
+  actualStateBefore: json("actualStateBefore"),
+  diff: json("diff"),
+  validationResult: varchar("validationResult", { length: 50 }).notNull(),
+  approvalStatus: mysqlEnum("approvalStatus", ["pending", "approved", "rejected", "bypassed"]).notNull().default("pending"),
+  executionResult: varchar("executionResult", { length: 50 }).notNull(),
+  actualStateAfter: json("actualStateAfter"),
+  verificationResult: varchar("verificationResult", { length: 50 }).notNull(),
+  rollbackStatus: varchar("rollbackStatus", { length: 50 }),
+  createdAt: timestamp("createdAt", { mode: "string" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "string" }).defaultNow().onUpdateNow().notNull(),
+});
+
+export const networkChangeJournalRelations = relations(
+  networkChangeJournal,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [networkChangeJournal.organizationId],
+      references: [organizations.id],
+    }),
+    router: one(routers, {
+      fields: [networkChangeJournal.routerId],
+      references: [routers.id],
+    }),
+    actor: one(users, {
+      fields: [networkChangeJournal.actorId],
+      references: [users.id],
+    }),
+  }),
+);
