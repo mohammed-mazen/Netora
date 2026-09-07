@@ -38,6 +38,7 @@ describe("ISP/WISP End-to-End Business Tests (Section 30)", () => {
   afterAll(async () => {
     const db = await getDb();
     if (!db) return;
+    await db.delete(organizationMembers).where(eq(organizationMembers.organizationId, orgId));
     await db.delete(organizations).where(eq(organizations.id, orgId));
     await db.delete(users).where(eq(users.id, ownerId));
   });
@@ -55,6 +56,7 @@ describe("ISP/WISP End-to-End Business Tests (Section 30)", () => {
       organizationId: orgId,
       siteId: siteRes.insertId,
       name: "E2E Router",
+      managementAddress: "10.0.0.1",
       host: "10.0.0.1",
       port: 8728,
       status: "pending",
@@ -75,7 +77,7 @@ describe("ISP/WISP End-to-End Business Tests (Section 30)", () => {
       organizationId: orgId,
       name: "E2E Gold Plan",
       price: "100.00",
-      type: "broadband",
+      type: "pppoe",
     });
 
     const [custRes] = await db.insert(customers).values({
