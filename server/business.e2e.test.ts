@@ -38,6 +38,10 @@ describe("ISP/WISP End-to-End Business Tests (Section 30)", () => {
   afterAll(async () => {
     const db = await getDb();
     if (!db) return;
+    await db.delete(customers).where(eq(customers.organizationId, orgId));
+    await db.delete(servicePlans).where(eq(servicePlans.organizationId, orgId));
+    await db.delete(routers).where(eq(routers.organizationId, orgId));
+    await db.delete(sites).where(eq(sites.organizationId, orgId));
     await db.delete(organizationMembers).where(eq(organizationMembers.organizationId, orgId));
     await db.delete(organizations).where(eq(organizations.id, orgId));
     await db.delete(users).where(eq(users.id, ownerId));
@@ -62,9 +66,7 @@ describe("ISP/WISP End-to-End Business Tests (Section 30)", () => {
       status: "pending",
     });
 
-    const router = await db.query.routers.findFirst({
-      where: eq(routers.id, routerRes.insertId)
-    });
+    const [router] = await db.select().from(routers).where(eq(routers.id, routerRes.insertId)).limit(1);
     expect(router).toBeDefined();
     expect(router?.status).toBe("pending");
   });
@@ -88,9 +90,7 @@ describe("ISP/WISP End-to-End Business Tests (Section 30)", () => {
       servicePlanId: planRes.insertId,
     });
 
-    const cust = await db.query.customers.findFirst({
-      where: eq(customers.id, custRes.insertId)
-    });
+    const [cust] = await db.select().from(customers).where(eq(customers.id, custRes.insertId)).limit(1);
     expect(cust).toBeDefined();
     expect(cust?.status).toBe("active");
     expect(cust?.servicePlanId).toBe(planRes.insertId);
