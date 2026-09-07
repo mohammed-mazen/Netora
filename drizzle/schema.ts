@@ -32,6 +32,7 @@ export const users = mysqlTable("users", {
   twoFactorEnabled: int("twoFactorEnabled").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  sessionVersion: int("sessionVersion").default(1).notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 

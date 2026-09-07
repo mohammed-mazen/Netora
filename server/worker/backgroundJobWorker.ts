@@ -136,6 +136,7 @@ async function handleRouterHealthCheck(job: Job): Promise<{ ok: boolean; error?:
   if (!job.routerId) return { ok: false, error: "المهمة لا تحمل معرّف راوتر" };
   const router = await getRouterById(job.routerId);
   if (!router) return { ok: false, error: "الراوتر المرتبط بالمهمة غير موجود" };
+  if (job.organizationId && router.organizationId !== job.organizationId) return { ok: false, error: "الراوتر لا يتبع لمؤسسة المهمة" };
 
   const result = await checkRouterHealth(router);
   await updateRouterHealthResult({
@@ -285,6 +286,7 @@ async function handleMonitorAlertDispatch(job: Job): Promise<{ ok: boolean; erro
   const sampleResult = await db.select().from(monitorSamples).where(eq(monitorSamples.id, payload.sampleId)).limit(1);
   const sample = sampleResult[0];
   if (!sample) return { ok: false, error: "القراءة المرتبطة بالمهمة غير موجودة" };
+  if (job.organizationId && sample.organizationId !== job.organizationId) return { ok: false, error: "القراءة لا تتبع لمؤسسة المهمة" };
 
   const settingsResult = await db.select().from(monitorSettings).where(eq(monitorSettings.organizationId, job.organizationId)).limit(1);
   const settings = settingsResult[0];

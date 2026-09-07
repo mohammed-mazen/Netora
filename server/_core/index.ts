@@ -13,6 +13,7 @@ import { serveStatic, setupVite } from "./vite";
 import { startBackgroundJobWorker, stopBackgroundJobWorker } from "../worker/backgroundJobWorker";
 import { getDb, connectionPool } from "../db";
 import { handlePaymentWebhook } from "../webhooks/payments";
+import { sql } from "drizzle-orm";
 
 // Rate limiter for the authentication endpoints (login/register are the only
 // unauthenticated, credential-guessable tRPC procedures). Scoped to the
@@ -135,6 +136,12 @@ async function startServer() {
     try {
       const db = await getDb();
       if (!db) throw new Error("DB not ready");
+
+      // bounded dependency check
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000));
+      const dbPromise = db.execute(sql`SELECT 1`);
+      await Promise.race([dbPromise, timeoutPromise]);
+
       res.json({ status: "ok" });
     } catch (e) {
       res.status(503).json({ status: "error", message: "Database unavailable" });

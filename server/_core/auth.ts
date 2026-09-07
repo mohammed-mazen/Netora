@@ -26,7 +26,7 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
   return bcrypt.compare(plain, hash);
 }
 
-export type SessionPayload = { userId: number };
+export type SessionPayload = { userId: number; sessionVersion?: number };
 
 class AuthService {
   private parseCookies(cookieHeader: string | undefined) {
@@ -42,13 +42,13 @@ class AuthService {
   }
 
   /** Signs a session JWT carrying only the local numeric user id. `kind: "session"` distinguishes it from a short-lived 2FA challenge token signed with the same secret (see below), so a leaked challenge token can never be replayed as a full session cookie. */
-  async createSessionToken(userId: number, options: { expiresInMs?: number } = {}): Promise<string> {
+  async createSessionToken(userId: number, sessionVersion: number = 1, options: { expiresInMs?: number } = {}): Promise<string> {
     const issuedAt = Date.now();
     const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
     const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
     const secretKey = this.getSessionSecret();
 
-    return new SignJWT({ userId, kind: "session" })
+    return new SignJWT({ userId, kind: "session", sessionVersion })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
       .setExpirationTime(expirationSeconds)
       .sign(secretKey);
@@ -60,7 +60,7 @@ class AuthService {
     try {
       const secretKey = this.getSessionSecret();
       const { payload } = await jwtVerify(cookieValue, secretKey, { algorithms: ["HS256"] });
-      const { userId, kind } = payload as Record<string, unknown>;
+      const { userId, kind, sessionVersion } = payload as Record<string, unknown>;
       if (typeof userId !== "number") {
         console.warn("[Auth] Session payload missing userId");
         return null;
@@ -72,7 +72,7 @@ class AuthService {
         console.warn("[Auth] Rejected non-session token used as session cookie");
         return null;
       }
-      return { userId };
+      return { userId, sessionVersion: typeof sessionVersion === "number" ? sessionVersion : 1 };
     } catch (error) {
       console.warn("[Auth] Session verification failed", String(error));
       return null;
@@ -120,6 +120,11 @@ class AuthService {
 
     const user = await db.getUserById(session.userId);
     if (!user) throw ForbiddenError("User not found");
+
+    const tokenVersion = session.sessionVersion || 1;
+    if (user.sessionVersion !== tokenVersion) {
+      throw ForbiddenError("Session has been revoked");
+    }
 
     return user;
   }
