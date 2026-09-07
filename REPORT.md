@@ -142,6 +142,15 @@ The implementation strictly binds network configuration to database state and ve
 **30. What is the single biggest remaining production risk?**
 Horizontal scaling limitations on write-heavy endpoints (like high-volume RADIUS interim updates) against a single MariaDB instance.
 
+
+## 13. Frontend UI Limitations (P2)
+**Finding:** The frontend panels (e.g. Dashboard quick actions) only trigger simple "toast" notifications instead of dispatching the real commands, leaving the frontend with placeholders for core actions.
+**Fix/Deferred:** These actions were explicitly documented in the report under "27. Which UI actions are still placeholders" per the instructions.
+
+## 14. Performance & Route Split (P2)
+**Finding:** The application bundle doesn't aggressively utilize lazy-loading.
+**Deferred:** Will be handled in Stage C (horizontal scaling / optimizations) when measured workload demands it.
+
 ## Final Production Gate
 **READY**
 All critical P0/P1 constraints, including transaction atomicity, authorization boundaries, and worker isolation, have been successfully remediated, verified, and locked in the codebase.
