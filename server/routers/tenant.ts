@@ -18,7 +18,7 @@ const trialInput = z.object({
   timezone: z.string().trim().min(3).max(64).default("Asia/Riyadh"),
   currency: z.string().trim().toUpperCase().length(3).default("SAR"),
   email: z.string().email("بريد إلكتروني غير صالح").trim().toLowerCase(),
-  password: z.string().min(8, "كلمة المرور يجب أن تكون 8 أحرف على الأقل"),
+  password: z.string().min(8, "كلمة المرور يجب أن تكون 8 أحرف على الأقل").optional(),
   userName: z.string().trim().optional(),
   phone: z.string().trim().optional(),
   honeypot: z.string().max(0, "Invalid submission").optional(),
@@ -53,6 +53,9 @@ export const tenantRouter = router({
            }
            userId = user.id;
         } else {
+           if (!input.password) {
+             throw new TRPCError({ code: "BAD_REQUEST", message: "كلمة المرور مطلوبة لإنشاء حساب جديد" });
+           }
            const { hashPassword } = await import("../_core/auth");
            const passwordHash = await hashPassword(input.password);
            const result = await tx.insert(users).values({

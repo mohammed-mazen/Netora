@@ -54,10 +54,10 @@ export default function Trial() {
         timezone: "Asia/Riyadh",
         currency: "SAR",
         email: user?.email || email.trim(),
-        password: password || "placeholder_password_since_user_exists",
+        password: password || undefined,
         userName: name.trim() || undefined,
         phone: phone.trim() || undefined,
-      });
+      } as any);
 
       // Fetch user again if it was a new registration
       if (!user) {

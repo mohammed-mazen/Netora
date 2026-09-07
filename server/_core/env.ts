@@ -2,7 +2,7 @@ export const ENV = {
   cookieSecret: process.env.JWT_SECRET ?? "",
   databaseUrl: process.env.DATABASE_URL ?? "",
   // Email (lowercase-compared) that is auto-promoted to role="admin" on registration.
-  ownerEmail: process.env.OWNER_EMAIL ?? "",
+  ownerEmail: "",
   isProduction: process.env.NODE_ENV === "production",
 
   // S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, Backblaze B2, ...).

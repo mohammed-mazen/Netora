@@ -161,7 +161,7 @@ describe("background job worker (real DB, no poll-interval wait — calls claimN
     expect(after?.lastError).toContain("وكيلًا محليًا");
   });
 
-  it("treats radius_policy_projection as a no-op success (documented MVP scope decision)", async () => {
+  it("treats radius_policy_projection as an unsupported error", async () => {
     const { organizationId, routerId } = await createTestOrgAndRouter("policyproj");
     const jobId = await insertJob({ organizationId, routerId, type: "radius_policy_projection" });
 
