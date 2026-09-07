@@ -32,6 +32,7 @@ export const users = mysqlTable("users", {
   twoFactorEnabled: int("twoFactorEnabled").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  sessionVersion: int("sessionVersion").default(1).notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
@@ -460,6 +461,8 @@ export const backgroundJobs = mysqlTable("background_jobs", {
   payload: text("payload"),
   lastError: text("lastError"),
   nextRetryAt: timestamp("nextRetryAt"),
+  leaseOwner: varchar("leaseOwner", { length: 120 }),
+  leaseVersion: int("leaseVersion").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

@@ -14,6 +14,18 @@ export function validateUploadableFile(input: UploadableFileInput) {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(input.contentBase64)) throw new Error("ترميز الملف غير صالح");
   const bytes = Buffer.from(input.contentBase64, "base64");
   if (!bytes.length || bytes.length > maxFileBytes) throw new Error("حجم الملف يجب أن يكون بين 1 بايت و5 ميغابايت");
+
+  // Magic byte verification for PDF
+  if (input.mimeType === "application/pdf") {
+    if (bytes.length < 4 || bytes[0] !== 0x25 || bytes[1] !== 0x50 || bytes[2] !== 0x44 || bytes[3] !== 0x46) {
+      throw new Error("تطابق نوع الملف مع المحتوى غير صحيح (PDF)");
+    }
+  } else if (input.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    // ZIP magic bytes (PK..)
+    if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4B || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
+      throw new Error("تطابق نوع الملف مع المحتوى غير صحيح (XLSX)");
+    }
+  }
   return bytes;
 }
 

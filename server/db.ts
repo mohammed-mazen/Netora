@@ -116,7 +116,7 @@ export async function createUserWithPassword(input: { email: string; passwordHas
   if (!db) throw new Error("قاعدة البيانات غير متاحة لإنشاء الحساب");
 
   const normalizedEmail = input.email.trim().toLowerCase();
-  const role = normalizedEmail === ENV.ownerEmail.toLowerCase() && ENV.ownerEmail ? "admin" : "user";
+  const role = "user"; // Bootstrap script handles admin creation now
 
   const result = await db.insert(users).values({
     email: normalizedEmail,

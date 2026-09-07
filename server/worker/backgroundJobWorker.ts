@@ -62,6 +62,7 @@ export async function claimNextJob(): Promise<Job | null> {
 
   const now = new Date();
   const visibilityCutoff = new Date(Date.now() - VISIBILITY_TIMEOUT_MS);
+  const workerId = `worker-${process.pid}-${Date.now()}`;
 
   // We use a transaction to atomically select and update the job to 'running'
   return await db.transaction(async tx => {
@@ -88,20 +89,26 @@ export async function claimNextJob(): Promise<Job | null> {
     if (!job) return null;
 
     const nextAttempts = job.status === 'running' ? job.attempts : job.attempts + 1;
+    const nextLeaseVersion = (job.leaseVersion || 0) + 1;
+
     await tx.update(backgroundJobs).set({
       status: "running",
       attempts: nextAttempts,
-      updatedAt: new Date() // reset visibility timer
+      leaseOwner: workerId,
+      leaseVersion: nextLeaseVersion,
+      updatedAt: new Date()
     }).where(eq(backgroundJobs.id, job.id));
 
-    return { ...job, status: "running", attempts: nextAttempts };
+    return { ...job, status: "running", attempts: nextAttempts, leaseOwner: workerId, leaseVersion: nextLeaseVersion };
   });
 }
 
-async function markSucceeded(jobId: number) {
+async function markSucceeded(job: Job) {
   const db = await getDb();
   if (!db) return;
-  await db.update(backgroundJobs).set({ status: "succeeded", lastError: null }).where(eq(backgroundJobs.id, jobId));
+  await db.update(backgroundJobs)
+    .set({ status: "succeeded", lastError: null })
+    .where(and(eq(backgroundJobs.id, job.id), eq(backgroundJobs.leaseOwner, job.leaseOwner ?? ""), eq(backgroundJobs.leaseVersion, job.leaseVersion)));
 }
 
 async function markFailedOrRetrying(job: Job, error: string) {
@@ -109,7 +116,8 @@ async function markFailedOrRetrying(job: Job, error: string) {
   if (!db) return;
   if (job.attempts >= MAX_ATTEMPTS) {
     // Dead-letter logic
-    await db.update(backgroundJobs).set({ status: "failed", lastError: error }).where(eq(backgroundJobs.id, job.id));
+    await db.update(backgroundJobs).set({ status: "failed", lastError: error })
+      .where(and(eq(backgroundJobs.id, job.id), eq(backgroundJobs.leaseOwner, job.leaseOwner ?? ""), eq(backgroundJobs.leaseVersion, job.leaseVersion)));
     console.error(`[Worker] job ${job.id} (${job.type}) moved to dead-letter (failed permanently): ${error} [org: ${job.organizationId}]`);
     return;
   }
@@ -120,7 +128,7 @@ async function markFailedOrRetrying(job: Job, error: string) {
     status: "retrying",
     lastError: error,
     nextRetryAt,
-  }).where(eq(backgroundJobs.id, job.id));
+  }).where(and(eq(backgroundJobs.id, job.id), eq(backgroundJobs.leaseOwner, job.leaseOwner ?? ""), eq(backgroundJobs.leaseVersion, job.leaseVersion)));
   console.warn(`[Worker] job ${job.id} (${job.type}) failed attempt ${job.attempts}/${MAX_ATTEMPTS}, retrying at ${nextRetryAt.toISOString()}: ${error} [org: ${job.organizationId}]`);
 }
 
@@ -128,6 +136,7 @@ async function handleRouterHealthCheck(job: Job): Promise<{ ok: boolean; error?:
   if (!job.routerId) return { ok: false, error: "المهمة لا تحمل معرّف راوتر" };
   const router = await getRouterById(job.routerId);
   if (!router) return { ok: false, error: "الراوتر المرتبط بالمهمة غير موجود" };
+  if (job.organizationId && router.organizationId !== job.organizationId) return { ok: false, error: "الراوتر لا يتبع لمؤسسة المهمة" };
 
   const result = await checkRouterHealth(router);
   await updateRouterHealthResult({
@@ -178,7 +187,7 @@ async function handleRadiusPolicyProjection(_job: Job): Promise<{ ok: boolean; e
   // authorization time rather than a separate projected cache table. This
   // operation is accepted (so queued jobs don't pile up as permanently
   // failed) but is a no-op until a projection strategy is decided.
-  return { ok: true };
+  return { ok: false, error: "radius_policy_projection is not supported" };
 }
 
 async function handleSmsSend(job: Job): Promise<{ ok: boolean; error?: string }> {
@@ -254,7 +263,7 @@ export async function executeJob(job: Job) {
 
   if (outcome.ok) {
     console.log(`[Worker] [${correlationId}] job ${job.id} (${job.type}) succeeded`);
-    await markSucceeded(job.id);
+    await markSucceeded(job);
   } else {
     console.warn(`[Worker] [${correlationId}] job ${job.id} (${job.type}) failed: ${outcome.error}`);
     await markFailedOrRetrying(job, outcome.error ?? "فشل غير معروف");
@@ -277,6 +286,7 @@ async function handleMonitorAlertDispatch(job: Job): Promise<{ ok: boolean; erro
   const sampleResult = await db.select().from(monitorSamples).where(eq(monitorSamples.id, payload.sampleId)).limit(1);
   const sample = sampleResult[0];
   if (!sample) return { ok: false, error: "القراءة المرتبطة بالمهمة غير موجودة" };
+  if (job.organizationId && sample.organizationId !== job.organizationId) return { ok: false, error: "القراءة لا تتبع لمؤسسة المهمة" };
 
   const settingsResult = await db.select().from(monitorSettings).where(eq(monitorSettings.organizationId, job.organizationId)).limit(1);
   const settings = settingsResult[0];

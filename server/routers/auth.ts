@@ -4,7 +4,9 @@ import { COOKIE_NAME } from "@shared/const";
 import { auth, hashPassword, isValidEmail, isValidPassword, verifyPassword } from "../_core/auth";
 import { getSessionCookieOptions } from "../_core/cookies";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { createUserWithPassword, getUserByEmail, getUserById, recordFailedLoginAttempt, touchUserLastSignedIn } from "../db";
+import { getDb, createUserWithPassword, getUserByEmail, getUserById, recordFailedLoginAttempt, touchUserLastSignedIn } from "../db";
+import { users } from "../../drizzle/schema";
+import { eq, sql } from "drizzle-orm";
 import { beginTwoFactorSetup, confirmTwoFactorSetup, disableTwoFactor, getTwoFactorStatus, regenerateRecoveryCodes, verifyTwoFactorChallenge } from "../twoFactor";
 
 const credentialsSchema = z.object({
@@ -20,8 +22,8 @@ function minutesUntil(date: Date): number {
   return Math.max(1, Math.ceil((date.getTime() - Date.now()) / 60_000));
 }
 
-async function issueSession(userId: number, ctx: { req: any; res: any }) {
-  const token = await auth.createSessionToken(userId);
+async function issueSession(userId: number, sessionVersion: number, ctx: { req: any; res: any }) {
+  const token = await auth.createSessionToken(userId, sessionVersion);
   const cookieOptions = getSessionCookieOptions(ctx.req);
   ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
 }
@@ -37,7 +39,7 @@ export const authRouter = router({
 
     const passwordHash = await hashPassword(input.password);
     const user = await createUserWithPassword({ email: input.email, passwordHash, name: input.name ?? null });
-    await issueSession(user.id, ctx);
+    await issueSession(user.id, user.sessionVersion, ctx);
     return user;
   }),
 
@@ -85,7 +87,7 @@ export const authRouter = router({
     }
 
     await touchUserLastSignedIn(user.id);
-    await issueSession(user.id, ctx);
+    await issueSession(user.id, user.sessionVersion, ctx);
     return { requiresTwoFactor: false as const, user: { ...user, lastSignedIn: new Date(), failedLoginAttempts: 0, lockedUntil: null } };
   }),
 
@@ -103,7 +105,7 @@ export const authRouter = router({
       if (!user) throw new TRPCError({ code: "UNAUTHORIZED", message: "الحساب غير موجود" });
 
       await touchUserLastSignedIn(user.id);
-      await issueSession(user.id, ctx);
+      await issueSession(user.id, user.sessionVersion, ctx);
       return { ...user, lastSignedIn: new Date(), failedLoginAttempts: 0, lockedUntil: null, usedRecoveryCode: result.usedRecoveryCode };
     }),
 
@@ -142,7 +144,13 @@ export const authRouter = router({
       }
     }),
   }),
-  logout: publicProcedure.mutation(({ ctx }) => {
+  logout: protectedProcedure.mutation(async ({ ctx }) => {
+    const db = await getDb();
+    if (db) {
+      await db.update(users)
+        .set({ sessionVersion: sql`${users.sessionVersion} + 1` })
+        .where(eq(users.id, ctx.user.id));
+    }
     const cookieOptions = getSessionCookieOptions(ctx.req);
     ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
     return { success: true } as const;
