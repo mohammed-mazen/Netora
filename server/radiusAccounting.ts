@@ -1,3 +1,4 @@
+import crypto from "crypto";
 // Real RADIUS accounting ingestion endpoint (Start/Interim-Update/Stop).
 //
 // Node is not a great fit for parsing raw RADIUS UDP packets (port 1813), so
@@ -57,13 +58,15 @@ function normalizeStatusType(value: unknown): "start" | "interim-update" | "stop
 }
 
 function normalizeProtocol(value: unknown): "hotspot" | "pppoe" {
-  return value === "pppoe" ? "pppoe" : "hotspot";
+  if (value === "hotspot") return "hotspot";
+  if (value === "pppoe") return "pppoe";
+  throw new Error("Invalid RADIUS protocol");
 }
 
 function normalizeOctets(value: unknown): string {
-  if (typeof value === "number" && Number.isFinite(value)) return String(Math.max(0, Math.trunc(value)));
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return String(Math.trunc(value));
   if (typeof value === "string" && /^\d+$/.test(value.trim())) return value.trim();
-  return "0";
+  throw new Error("Invalid octet counter");
 }
 
 export function registerRadiusAccountingRoute(app: Express) {
@@ -93,13 +96,26 @@ export function registerRadiusAccountingRoute(app: Express) {
       const suppliedSecret = req.headers["x-radius-shared-secret"];
       const configuredSecretRef = `secret://integration/${router.organizationId}/radius`;
       const expectedSecret = await resolveIntegrationSecret(configuredSecretRef);
-      if (expectedSecret) {
-        if (typeof suppliedSecret !== "string" || suppliedSecret !== expectedSecret) {
-          res.status(401).json({ accepted: false, error: "سر RADIUS المشترك غير صحيح أو مفقود" });
-          return;
-        }
-      } else {
-        console.warn(`[RadiusAccounting] no shared secret configured for org ${router.organizationId} — accepting unauthenticated event (configure the RADIUS integration secret to enforce verification)`);
+      if (!expectedSecret) {
+        console.error(`[RadiusAccounting] RADIUS authentication is not configured for org ${router.organizationId}`);
+        res.status(503).json({
+          accepted: false,
+          error: "RADIUS authentication unavailable",
+        });
+        return;
+      }
+
+      if (typeof suppliedSecret !== "string") {
+        res.status(401).json({ accepted: false, error: "سر RADIUS المشترك غير صحيح أو مفقود" });
+        return;
+      }
+
+      const expectedBuffer = Buffer.from(expectedSecret, "utf8");
+      const suppliedBuffer = Buffer.from(suppliedSecret, "utf8");
+
+      if (expectedBuffer.length !== suppliedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)) {
+        res.status(401).json({ accepted: false, error: "سر RADIUS المشترك غير صحيح أو مفقود" });
+        return;
       }
 
       const username = typeof body.username === "string" ? body.username.trim() : "";
@@ -107,15 +123,28 @@ export function registerRadiusAccountingRoute(app: Express) {
 
       const eventTime = typeof body.eventTime === "string" && !Number.isNaN(Date.parse(body.eventTime)) ? new Date(body.eventTime) : new Date();
 
+      let protocol: "hotspot" | "pppoe";
+      let inputOctets: string;
+      let outputOctets: string;
+
+      try {
+        protocol = normalizeProtocol(body.protocol);
+        inputOctets = normalizeOctets(body.acctInputOctets);
+        outputOctets = normalizeOctets(body.acctOutputOctets);
+      } catch (err: any) {
+        res.status(400).json({ accepted: false, error: err.message });
+        return;
+      }
+
       const result = await applyRadiusAccountingEvent({
         organizationId: router.organizationId,
         routerId: router.id,
         customerId: customer?.id ?? null,
         acctUniqueId,
-        protocol: normalizeProtocol(body.protocol),
+        protocol,
         statusType,
-        inputOctets: normalizeOctets(body.acctInputOctets),
-        outputOctets: normalizeOctets(body.acctOutputOctets),
+        inputOctets,
+        outputOctets,
         eventTime,
       });
 

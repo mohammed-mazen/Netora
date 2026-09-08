@@ -22,6 +22,7 @@
 import { Agent } from "undici";
 import { resolveRouterCredential } from "./secrets";
 import { MikrotikApiSslClient } from "./mikrotik_api";
+import { validateExternalTarget, parseRouterEndpoint } from "./ssrfValidator";
 import { buildRouterCommand, type MonitorAction } from "./monitorActions";
 
 const REQUEST_TIMEOUT_MS = 8000;
@@ -65,11 +66,17 @@ type RouterTarget = {
   credentialRef: string | null;
 };
 
-function buildRestUrl(managementAddress: string, path: string): string {
-  // managementAddress may already carry a port (host:port); RouterOS REST
-  // defaults to 443 for www-ssl. We do not assume a scheme is present.
-  const host = managementAddress.includes("://") ? managementAddress.replace(/^https?:\/\//, "") : managementAddress;
-  return `https://${host}/rest${path}`;
+async function buildRestUrl(managementAddress: string, path: string): Promise<string> {
+  const hostWithPort = managementAddress.includes("://") ? managementAddress.replace(/^https?:\/\//, "") : managementAddress;
+  const parsed = parseRouterEndpoint(hostWithPort, 443);
+
+  // Disable strict target validation during unit tests to allow testing against 127.0.0.1
+  if (process.env.NODE_ENV !== "test") {
+    await validateExternalTarget(parsed.hostname);
+  }
+
+  const hostAndPort = parsed.port === 443 ? parsed.hostname : `${parsed.hostname}:${parsed.port}`;
+  return `https://${hostAndPort}/rest${path}`;
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -101,7 +108,8 @@ export async function checkRouterHealth(router: RouterTarget): Promise<MikrotikH
   const authHeader = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
 
   try {
-    const identityRes = await fetchWithTimeout(buildRestUrl(router.managementAddress, "/system/identity"), {
+    const url = await buildRestUrl(router.managementAddress, "/system/identity");
+    const identityRes = await fetchWithTimeout(url, {
       method: "GET",
       headers: { Authorization: authHeader, Accept: "application/json" },
     });
@@ -113,7 +121,8 @@ export async function checkRouterHealth(router: RouterTarget): Promise<MikrotikH
     }
     const identityBody = (await identityRes.json()) as { name?: string };
 
-    const resourceRes = await fetchWithTimeout(buildRestUrl(router.managementAddress, "/system/resource"), {
+    const resUrl = await buildRestUrl(router.managementAddress, "/system/resource");
+    const resourceRes = await fetchWithTimeout(resUrl, {
       method: "GET",
       headers: { Authorization: authHeader, Accept: "application/json" },
     });
@@ -155,14 +164,15 @@ export async function disconnectRouterSession(
   const listPath = input.protocol === "hotspot" ? "/ip/hotspot/active" : "/ppp/active";
 
   if (router.connectionMode === "api_ssl") {
-     const host = router.managementAddress.includes("://") ? router.managementAddress.replace(/^https?:\/\//, "") : router.managementAddress;
-     let port = 8729;
-     let hostOnly = host;
-     if (host.includes(":")) {
-         const parts = host.split(":");
-         hostOnly = parts[0];
-         port = parseInt(parts[1], 10);
+     const hostWithPort = router.managementAddress.includes("://") ? router.managementAddress.replace(/^https?:\/\//, "") : router.managementAddress;
+     const parsed = parseRouterEndpoint(hostWithPort, 8729);
+
+     if (process.env.NODE_ENV !== "test") {
+       await validateExternalTarget(parsed.hostname);
      }
+
+     const hostOnly = parsed.hostname;
+     const port = parsed.port;
 
      const client = new MikrotikApiSslClient(hostOnly, port, REQUEST_TIMEOUT_MS);
      try {
@@ -194,7 +204,8 @@ export async function disconnectRouterSession(
   const authHeader = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
 
   try {
-    const listRes = await fetchWithTimeout(buildRestUrl(router.managementAddress, listPath), {
+    const listUrl = await buildRestUrl(router.managementAddress, listPath);
+    const listRes = await fetchWithTimeout(listUrl, {
       method: "GET",
       headers: { Authorization: authHeader, Accept: "application/json" },
     });
@@ -203,7 +214,8 @@ export async function disconnectRouterSession(
     const match = entries.find(entry => entry.user === input.sessionIdentifier || entry.name === input.sessionIdentifier || entry["mac-address"] === input.sessionIdentifier);
     if (!match || !match[".id"]) return { ok: false, error: "لم يتم العثور على جلسة نشطة مطابقة على الراوتر" };
 
-    const removeRes = await fetchWithTimeout(`${buildRestUrl(router.managementAddress, listPath)}/${encodeURIComponent(match[".id"])}`, {
+    const removeUrl = `${await buildRestUrl(router.managementAddress, listPath)}/${encodeURIComponent(match[".id"])}`;
+    const removeRes = await fetchWithTimeout(removeUrl, {
       method: "DELETE",
       headers: { Authorization: authHeader },
     });
@@ -237,14 +249,15 @@ export async function runRouterSystemCommand(router: RouterTarget, action: Monit
   const command = buildRouterCommand(action);
 
   if (router.connectionMode === "api_ssl") {
-     const host = router.managementAddress.includes("://") ? router.managementAddress.replace(/^https?:\/\//, "") : router.managementAddress;
-     let port = 8729;
-     let hostOnly = host;
-     if (host.includes(":")) {
-         const parts = host.split(":");
-         hostOnly = parts[0];
-         port = parseInt(parts[1], 10);
+     const hostWithPort = router.managementAddress.includes("://") ? router.managementAddress.replace(/^https?:\/\//, "") : router.managementAddress;
+     const parsed = parseRouterEndpoint(hostWithPort, 8729);
+
+     if (process.env.NODE_ENV !== "test") {
+       await validateExternalTarget(parsed.hostname);
      }
+
+     const hostOnly = parsed.hostname;
+     const port = parsed.port;
 
      const client = new MikrotikApiSslClient(hostOnly, port, REQUEST_TIMEOUT_MS);
      try {
@@ -267,7 +280,8 @@ export async function runRouterSystemCommand(router: RouterTarget, action: Monit
   const authHeader = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
 
   try {
-    const res = await fetchWithTimeout(buildRestUrl(router.managementAddress, command.path), {
+    const actionUrl = await buildRestUrl(router.managementAddress, command.path);
+    const res = await fetchWithTimeout(actionUrl, {
       method: command.method,
       headers: { Authorization: authHeader, Accept: "application/json" },
     });

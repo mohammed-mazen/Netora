@@ -1,4 +1,5 @@
 import { resolveIntegrationSecret } from "./secrets";
+import { validateExternalTarget } from "./ssrfValidator";
 
 const REQUEST_TIMEOUT_MS = 8000;
 
@@ -45,9 +46,25 @@ export async function dispatchSms(input: {
   }
 
   const gateway = parseSmsGatewaySecret(input.secretValue);
-  const url = gateway.url?.trim();
-  if (!url) {
+  const rawUrl = gateway.url?.trim();
+  if (!rawUrl) {
     return { ok: false, retryable: false, error: "عنوان بوابة الرسائل غير مهيأ" };
+  }
+
+  let validatedUrl = rawUrl;
+  try {
+    const parsedUrl = new URL(rawUrl);
+
+    // Ensure HTTPS
+    if (parsedUrl.protocol !== 'https:' && process.env.NODE_ENV !== "test") {
+       return { ok: false, retryable: false, error: "يجب استخدام HTTPS لبوابة الرسائل" };
+    }
+
+    if (process.env.NODE_ENV !== "test") {
+       await validateExternalTarget(parsedUrl.hostname);
+    }
+  } catch (err: any) {
+    return { ok: false, retryable: false, error: `عنوان غير صالح أو غير آمن: ${err.message}` };
   }
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -56,7 +73,7 @@ export async function dispatchSms(input: {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
+    const response = await fetch(validatedUrl, {
       method: "POST",
       headers,
       body: JSON.stringify({ to: input.toNumber, text: input.body, from: gateway.from ?? null }),

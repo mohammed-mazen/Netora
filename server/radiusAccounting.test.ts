@@ -98,7 +98,7 @@ describe("POST /api/radius/accounting (real HTTP + real DB)", () => {
     expect(body.accepted).toBe(false);
   });
 
-  it("accepts an unauthenticated event (with a warning) when no RADIUS shared secret is configured yet", async () => {
+  it("rejects an unauthenticated event when no RADIUS shared secret is configured yet (fail closed)", async () => {
     const nasIdentifier = uniqueNas("nosecret");
     const { organizationId } = await createTestOrgWithRouter("nosecret", nasIdentifier);
     const acctUniqueId = `sess-${Date.now()}-nosecret`;
@@ -115,14 +115,13 @@ describe("POST /api/radius/accounting (real HTTP + real DB)", () => {
         acctOutputOctets: "0",
       }),
     });
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.accepted).toBe(true);
-    expect(body.action).toBe("created");
+    expect(body.accepted).toBe(false);
+    expect(body.error).toBe("RADIUS authentication unavailable");
 
     const row = await fetchSessionRow(organizationId, acctUniqueId);
-    expect(row).not.toBeNull();
-    expect(row?.state).toBe("active");
+    expect(row).toBeNull();
   });
 
   it("rejects an event with a missing/incorrect shared secret once one is configured for the organization", async () => {
@@ -206,14 +205,40 @@ describe("POST /api/radius/accounting (real HTTP + real DB)", () => {
     expect(row?.stoppedAt).not.toBeNull();
   });
 
+  it("ignores stale Interim-Update events after a session is closed", async () => {
+    const nasIdentifier = uniqueNas("stale");
+    const { organizationId } = await createTestOrgWithRouter("stale", nasIdentifier);
+    await setIntegrationSecret({ organizationId, kind: "radius", value: "stale-secret" });
+    const acctUniqueId = `sess-${Date.now()}-stale`;
+    const headers = { "Content-Type": "application/json", "X-Radius-Shared-Secret": "stale-secret" };
+
+    await fetch(`${baseUrl}/api/radius/accounting`, {
+      method: "POST", headers,
+      body: JSON.stringify({ nasIdentifier, acctStatusType: "Stop", acctUniqueId, protocol: "hotspot", acctInputOctets: "10", acctOutputOctets: "10" })
+    });
+
+    const res = await fetch(`${baseUrl}/api/radius/accounting`, {
+      method: "POST", headers,
+      body: JSON.stringify({ nasIdentifier, acctStatusType: "Interim-Update", acctUniqueId, protocol: "hotspot", acctInputOctets: "20", acctOutputOctets: "20" })
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.action).toBe("ignored");
+
+    const row = await fetchSessionRow(organizationId, acctUniqueId);
+    expect(row?.state).toBe("closed");
+  });
+
   it("defensively creates a closed session if a Stop event arrives without a prior Start (e.g. worker restart mid-session)", async () => {
     const nasIdentifier = uniqueNas("orphanstop");
     const { organizationId } = await createTestOrgWithRouter("orphanstop", nasIdentifier);
+    await setIntegrationSecret({ organizationId, kind: "radius", value: "orphan-secret" });
     const acctUniqueId = `sess-${Date.now()}-orphanstop`;
 
     const res = await fetch(`${baseUrl}/api/radius/accounting`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Radius-Shared-Secret": "orphan-secret" },
       body: JSON.stringify({
         nasIdentifier, acctStatusType: "Stop", acctUniqueId,
         protocol: "hotspot", acctInputOctets: "999", acctOutputOctets: "888",

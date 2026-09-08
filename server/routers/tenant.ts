@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createOrganizationForUser, getTenantOverview, getTenantPlanUsage, listActiveTenantMemberships } from "../db";
 import { protectedProcedure, publicProcedure, router, tenantPermissionProcedure } from "../_core/trpc";
-import { getDb } from "../db";
+import { getDb, getUserById } from "../db";
 import { users, organizations, organizationMembers, organizationSubscriptions, subscriptionPlans } from "../../drizzle/schema";
 
 const organizationInput = z.object({
@@ -88,15 +88,19 @@ export const tenantRouter = router({
         let subscriptionPlan = subscriptionPlanResult[0];
 
         if (subscriptionPlan) {
+            const trialEndsAt = new Date();
+            trialEndsAt.setDate(trialEndsAt.getDate() + 14);
             await tx.insert(organizationSubscriptions).values({
                 organizationId,
                 planId: subscriptionPlan.id,
                 status: "trialing",
+                endsAt: trialEndsAt
             });
         }
 
         // Log the user in
-        const token = await auth.createSessionToken(userId);
+        const userForSession = await getUserById(userId);
+        const token = await auth.createSessionToken(userId, userForSession?.sessionVersion || 1);
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
 
