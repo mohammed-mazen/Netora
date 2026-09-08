@@ -94,10 +94,10 @@ export const platformPayments = mysqlTable("platform_payments", {
 export const webhookEvents = mysqlTable("webhook_events", {
   id: int("id").autoincrement().primaryKey(),
   provider: varchar("provider", { length: 40 }).notNull(),
-  eventId: varchar("eventId", { length: 120 }).notNull().unique(),
+  eventId: varchar("eventId", { length: 120 }).notNull(),
   payload: text("payload").notNull(),
   processedAt: timestamp("processedAt").defaultNow().notNull(),
-});
+}, table => [uniqueIndex("provider_event_idx").on(table.provider, table.eventId)]);
 
 export const organizationSubscriptions = mysqlTable("organization_subscriptions", {
   id: int("id").autoincrement().primaryKey(),
@@ -767,9 +767,10 @@ export const pointLedgerEntries = mysqlTable("point_ledger_entries", {
   kind: mysqlEnum("kind", ["earn", "redeem", "adjust"]).notNull(),
   points: int("points").notNull(),
   reason: varchar("reason", { length: 200 }),
+  reference: varchar("reference", { length: 160 }),
   createdByUserId: int("createdByUserId").references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, table => [index("point_ledger_org_customer_idx").on(table.organizationId, table.customerId)]);
+}, table => [index("point_ledger_org_customer_idx").on(table.organizationId, table.customerId), uniqueIndex("point_ledger_reference_idx").on(table.organizationId, table.reference)]);
 
 // ===========================================================================
 // SMS GATEWAY — provider configuration + outbound message log.
