@@ -347,12 +347,15 @@ export async function getTenantPlanUsage(organizationId: number) {
       .where(eq(organizationSubscriptions.organizationId, organizationId)).orderBy(desc(organizationSubscriptions.createdAt)).limit(1),
     db.select({ routerResourceCount: organizations.routerResourceCount, customerResourceCount: organizations.customerResourceCount }).from(organizations).where(eq(organizations.id, organizationId)).limit(1),
   ]);
-  const plan = subscription[0]; return {
+  const filesSize = await db.select({ totalSize: sql`SUM(sizeBytes)` }).from(files).where(eq(files.organizationId, organizationId));
+  const plan = subscription[0];
+  const usedStorageMb = ((filesSize[0] as any)?.totalSize || 0) / (1024 * 1024);
+  return {
     subscription: plan ? { planName: plan.planName, status: plan.status } : null,
     resources: {
       routers: { used: organization[0]?.routerResourceCount ?? 0, limit: plan ? plan.routerOverride ?? plan.routerLimit : null },
       customers: { used: organization[0]?.customerResourceCount ?? 0, limit: plan ? plan.customerOverride ?? plan.customerLimit : null },
-      storage: { usedMb: null, limitMb: plan?.storageLimitMb ?? null },
+      storage: { usedMb: Number(usedStorageMb.toFixed(2)), limitMb: plan?.storageLimitMb ?? null },
     },
   };
 }
