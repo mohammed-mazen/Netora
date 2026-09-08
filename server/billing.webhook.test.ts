@@ -8,7 +8,7 @@ describe("Webhook Idempotency", () => {
     const eventId = `evt_${Date.now()}`;
     const payload = JSON.stringify({ amount: 100 });
 
-    const handler = async () => {
+    const handler = async (tx: any) => {
       callCount++;
     };
 
