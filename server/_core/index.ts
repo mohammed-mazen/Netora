@@ -5,7 +5,7 @@ import net from "net";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerStorageProxy } from "./storageProxy";
+import { registerFileAccessRoute } from "./storageProxy";
 import { registerRadiusAccountingRoute } from "../radiusAccounting";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -153,7 +153,7 @@ async function startServer() {
   app.use("/api/radius/accounting", radiusRateLimiter, express.json({ limit: "256kb" }));
   app.use("/api/trpc", express.json({ limit: "10mb" }), express.urlencoded({ limit: "10mb", extended: true }));
 
-  registerStorageProxy(app);
+  registerFileAccessRoute(app);
   registerRadiusAccountingRoute(app);
 
   // tRPC API — a tight limiter on auth-shaped batch calls, a looser general

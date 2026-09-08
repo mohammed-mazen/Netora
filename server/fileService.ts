@@ -29,6 +29,8 @@ export function validateUploadableFile(input: UploadableFileInput) {
   return bytes;
 }
 
+// Orphan cleanup strategy: Orphan files and expired uploads can be cleaned up
+// via an S3 lifecycle policy (e.g., matching `organizations/*/report/*`).
 export async function uploadTenantFile(input: UploadableFileInput & { organizationId: number; userId: number }) {
   const bytes = validateUploadableFile(input);
   const db = await getDb();
@@ -56,5 +58,5 @@ export async function getTenantFileAccessUrl(input: { organizationId: number; fi
   const result = await db.select({ id: files.id, originalName: files.originalName, storageKey: files.storageKey }).from(files)
     .where(and(eq(files.id, input.fileId), eq(files.organizationId, input.organizationId))).limit(1);
   if (!result[0]) throw new Error("الملف المحدد لا يتبع للمؤسسة");
-  return { id: result[0].id, originalName: result[0].originalName, url: await storageGetSignedUrl(result[0].storageKey) };
+  return { id: result[0].id, originalName: result[0].originalName, url: `/api/files/${result[0].id}/access` };
 }
