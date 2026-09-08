@@ -178,6 +178,7 @@ export const routers = mysqlTable("routers", {
   lastSeenAt: timestamp("lastSeenAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
 // nasIdentifier is unique PLATFORM-WIDE (not per-organization). This is
 // intentional: a raw RADIUS accounting packet carries no tenant/organization
 // context of its own — the only way to route it to the correct tenant is by
