@@ -1677,12 +1677,12 @@ export async function generateTenantReportExport(input: { organizationId: number
   const payload = reportExportPayload(format, definition[0].name, columns, rows);
   const safeName = definition[0].name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const { storagePut } = await import("./storage");
-  const { key, url } = await storagePut(`organizations/${input.organizationId}/report/${Date.now()}_${safeName}.${payload.extension}`, payload.body, payload.mimeType);
+  const { key } = await storagePut(`organizations/${input.organizationId}/report/${Date.now()}_${safeName}.${payload.extension}`, payload.body, payload.mimeType);
   return db.transaction(async tx => {
     const fileResult = await tx.insert(files).values({ organizationId: input.organizationId, storageKey: key, originalName: payload.originalName, mimeType: payload.mimeType, sizeBytes: payload.body.length, category: "report", createdByUserId: input.userId });
     const fileId = Number(fileResult[0]?.insertId);
     const exportResult = await tx.insert(reportExports).values({ organizationId: input.organizationId, reportDefinitionId: input.reportDefinitionId, fileId, status: "ready", rowCount: rows.length, createdByUserId: input.userId });
-    return { id: Number(exportResult[0]?.insertId), fileId, fileKey: key, fileUrl: url, rowCount: rows.length, status: "ready" as const, format };
+    return { id: Number(exportResult[0]?.insertId), fileId, fileKey: key, rowCount: rows.length, status: "ready" as const, format };
   });
 }
 

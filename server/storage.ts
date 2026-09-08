@@ -80,11 +80,12 @@ export async function storageGet(relKey: string): Promise<Uint8Array> {
   return new Uint8Array(await response.Body.transformToByteArray());
 }
 
-export async function storageGetSignedUrl(relKey: string, expiresInSeconds = 300): Promise<string> {
+export async function storageGetSignedUrl(relKey: string, expiresInSeconds = 300, originalName?: string): Promise<string> {
   const client = getClient();
   const key = normalizeKey(relKey);
 
-  return getSignedUrl(client, new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key }), {
+  const responseContentDisposition = originalName ? `attachment; filename="${encodeURIComponent(originalName)}"` : undefined;
+  return getSignedUrl(client, new GetObjectCommand({ Bucket: ENV.s3Bucket, Key: key, ResponseContentDisposition: responseContentDisposition }), {
     expiresIn: expiresInSeconds,
   });
 }
