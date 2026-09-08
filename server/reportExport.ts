@@ -7,8 +7,15 @@ function cellText(value: unknown): string {
   return String(value);
 }
 
+function sanitizeSpreadsheetCell(value: string): string {
+  if (/^[=+\-@]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 function escapeCsvCell(value: unknown): string {
-  return JSON.stringify(cellText(value));
+  return JSON.stringify(sanitizeSpreadsheetCell(cellText(value)));
 }
 
 export function renderReportCsv(columns: string[], rows: Record<string, unknown>[]): string {
@@ -31,7 +38,7 @@ export function renderReportExcel(title: string, columns: string[], rows: Record
   const body = rows
     .map((row) => {
       const cells = columns
-        .map((column) => `<Cell><Data ss:Type="String">${escapeXml(cellText(row[column]))}</Data></Cell>`)
+        .map((column) => `<Cell><Data ss:Type="String">${escapeXml(sanitizeSpreadsheetCell(cellText(row[column])))}</Data></Cell>`)
         .join("");
       return `<Row>${cells}</Row>`;
     })

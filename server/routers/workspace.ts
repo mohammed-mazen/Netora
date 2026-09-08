@@ -431,16 +431,7 @@ export const workspaceRouter = router({
       try { return await listTenantFiles(ctx.tenant.organizationId, input); }
       catch (error) { return operationError(error, "تعذر تحميل ملفات المؤسسة الآن"); }
     }),
-    upload: tenantPermissionProcedure("files:write").input(z.object({
-      originalName: z.string().trim().min(1).max(255), mimeType: z.enum(["text/csv", "text/plain", "application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]),
-      contentBase64: z.string().min(4).max(7_000_000), category: z.enum(["import", "report", "backup", "attachment"]),
-    })).mutation(async ({ ctx, input }) => {
-      try {
-        const result = await uploadTenantFile({ ...input, organizationId: ctx.tenant.organizationId, userId: ctx.user.id });
-        await auditMutation({ organizationId: ctx.tenant.organizationId, actorUserId: ctx.user.id, action: "file.upload", resourceType: "file", resourceId: String(result.id), requestId: requestId(ctx.req.headers), metadata: { category: result.category, mimeType: input.mimeType, sizeBytes: result.sizeBytes } });
-        return result;
-      } catch (error) { return operationError(error, "تعذر رفع الملف الآن"); }
-    }),
+
     getAccessUrl: tenantPermissionProcedure("files:read").input(z.object({ fileId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       try {
         const result = await getTenantFileAccessUrl({ organizationId: ctx.tenant.organizationId, fileId: input.fileId });

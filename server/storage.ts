@@ -3,6 +3,7 @@
 // environment variables (see .env.example). Files are uploaded server-side
 // (buffered through this process) and downloaded via short-lived presigned
 // GET URLs, so no bucket needs to be public and no secrets reach the client.
+import { Upload } from "@aws-sdk/lib-storage";
 import {
   GetObjectCommand,
   PutObjectCommand,
@@ -47,22 +48,25 @@ function appendHashSuffix(relKey: string): string {
 
 export async function storagePut(
   relKey: string,
-  data: Buffer | Uint8Array | string,
+  data: Buffer | Uint8Array | string | NodeJS.ReadableStream | any,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
   const client = getClient();
   const key = appendHashSuffix(normalizeKey(relKey));
 
-  await client.send(
-    new PutObjectCommand({
+  const upload = new Upload({
+    client,
+    params: {
       Bucket: ENV.s3Bucket,
       Key: key,
       Body: data,
       ContentType: contentType,
-    }),
-  );
+    }
+  });
 
-  return { key, url: `/api/storage/${key}` };
+  await upload.done();
+
+  return { key, url: "" }; // URLs should be requested via API, not directly
 }
 
 export async function storageGet(relKey: string): Promise<Uint8Array> {
