@@ -17,20 +17,54 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
     build: .
-    ports:
-      - "3000:3000"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=mysql://netora:netora@db:3306/netora
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=test_secret_for_compose_only
       - SECRET_ENCRYPTION_KEY=1234567890123456789012345678901234567890123456789012345678901234
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     command: sh -c "npm run db:push && npm run start"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  lb:
+    image: nginx:alpine
+    ports:
+      - "3000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - app
 
 volumes:
   db_data:
+  redis_data:
