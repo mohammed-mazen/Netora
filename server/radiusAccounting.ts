@@ -93,13 +93,15 @@ export function registerRadiusAccountingRoute(app: Express) {
       const suppliedSecret = req.headers["x-radius-shared-secret"];
       const configuredSecretRef = `secret://integration/${router.organizationId}/radius`;
       const expectedSecret = await resolveIntegrationSecret(configuredSecretRef);
-      if (expectedSecret) {
-        if (typeof suppliedSecret !== "string" || suppliedSecret !== expectedSecret) {
-          res.status(401).json({ accepted: false, error: "سر RADIUS المشترك غير صحيح أو مفقود" });
-          return;
-        }
-      } else {
-        console.warn(`[RadiusAccounting] no shared secret configured for org ${router.organizationId} — accepting unauthenticated event (configure the RADIUS integration secret to enforce verification)`);
+      if (!expectedSecret) {
+        // Fail-closed as required: RADIUS must reject unauthenticated events if secret is missing
+        res.status(401).json({ accepted: false, error: "سر RADIUS المشترك غير مكوّن. قم بإضافته للتحقق من المصادقة." });
+        return;
+      }
+
+      if (typeof suppliedSecret !== "string" || suppliedSecret !== expectedSecret) {
+        res.status(401).json({ accepted: false, error: "سر RADIUS المشترك غير صحيح أو مفقود" });
+        return;
       }
 
       const username = typeof body.username === "string" ? body.username.trim() : "";

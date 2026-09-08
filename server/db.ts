@@ -573,11 +573,15 @@ export async function applyRadiusAccountingEvent(input: {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة لتسجيل حدث RADIUS");
 
-  const existing = await db.select({ id: networkSessions.id }).from(networkSessions)
-    .where(and(eq(networkSessions.organizationId, input.organizationId), eq(networkSessions.acctUniqueId, input.acctUniqueId))).limit(1);
+  const existing = await db.select({ id: networkSessions.id, state: networkSessions.state, lastUpdateAt: networkSessions.lastUpdateAt }).from(networkSessions)
+    .where(and(eq(networkSessions.organizationId, input.organizationId), eq(networkSessions.routerId, input.routerId), eq(networkSessions.acctUniqueId, input.acctUniqueId))).limit(1);
 
   if (input.statusType === "start") {
     if (existing[0]) {
+      if (existing[0].state === "closed") {
+        return { id: existing[0].id, action: "ignored_closed_session" as const };
+      }
+
       await db.update(networkSessions).set({
         state: "active", inputOctets: input.inputOctets, outputOctets: input.outputOctets, lastUpdateAt: input.eventTime,
       }).where(eq(networkSessions.id, existing[0].id));
@@ -604,6 +608,10 @@ export async function applyRadiusAccountingEvent(input: {
       ...(input.statusType === "stop" ? { stoppedAt: input.eventTime } : {}),
     });
     return { id: Number(result[0]?.insertId), action: "created" as const };
+  }
+
+  if (existing[0].state === "closed") {
+    return { id: existing[0].id, action: "ignored_closed_session" as const };
   }
 
   await db.update(networkSessions).set({
@@ -1395,8 +1403,17 @@ export async function createTenantCashVoucher(input: { organizationId: number; u
       { journalEntryId: entryId, accountCode: cashBox.accountNumber, debit: cashDebit, credit: cashCredit },
       { journalEntryId: entryId, accountCode: counter.accountNumber, debit: counterDebit, credit: counterCredit },
     ]);
-    await tx.update(chartAccounts).set({ balance: applyDebitCredit(String(cashBox.balance), cashBox.nature, cashDebit, cashCredit) }).where(eq(chartAccounts.id, cashBox.id));
-    await tx.update(chartAccounts).set({ balance: applyDebitCredit(String(counter.balance), counter.nature, counterDebit, counterCredit) }).where(eq(chartAccounts.id, counter.id));
+    // Lock accounts in deterministic ID order to prevent deadlocks
+    const [firstLockId, secondLockId] = [cashBox.id, counter.id].sort((a, b) => a - b);
+
+    // Acquire locks
+    const firstLockedRows = await tx.select({ id: chartAccounts.id, balance: chartAccounts.balance, nature: chartAccounts.nature }).from(chartAccounts).where(eq(chartAccounts.id, firstLockId)).for("update");
+    const secondLockedRows = await tx.select({ id: chartAccounts.id, balance: chartAccounts.balance, nature: chartAccounts.nature }).from(chartAccounts).where(eq(chartAccounts.id, secondLockId)).for("update");
+
+    const cashBoxLocked = firstLockId === cashBox.id ? firstLockedRows : secondLockedRows;
+    const counterLocked = firstLockId === counter.id ? firstLockedRows : secondLockedRows;
+    if (cashBoxLocked[0]) await tx.update(chartAccounts).set({ balance: applyDebitCredit(String(cashBoxLocked[0].balance), cashBoxLocked[0].nature, cashDebit, cashCredit) }).where(eq(chartAccounts.id, cashBox.id));
+    if (counterLocked[0]) await tx.update(chartAccounts).set({ balance: applyDebitCredit(String(counterLocked[0].balance), counterLocked[0].nature, counterDebit, counterCredit) }).where(eq(chartAccounts.id, counter.id));
     const voucherResult = await tx.insert(cashVouchers).values({ organizationId: input.organizationId, cashBoxId: input.cashBoxId, counterAccountId: input.counterAccountId, customerId: input.customerId ?? null, kind: input.kind, reference, amount: input.amount, description: input.description ?? null, journalEntryId: entryId, createdByUserId: input.userId });
     return { id: Number(voucherResult[0]?.insertId), entryId };
   });
@@ -1903,7 +1920,7 @@ export async function postTenantPointLedgerEntry(input: { organizationId: number
   if (input.points === 0) throw new Error("قيمة النقاط يجب أن تكون غير صفرية");
   const delta = input.kind === "redeem" ? -Math.abs(input.points) : input.kind === "earn" ? Math.abs(input.points) : input.points;
   return db.transaction(async tx => {
-    const existing = await tx.select({ balance: customerPointBalances.balance }).from(customerPointBalances).where(eq(customerPointBalances.customerId, input.customerId)).limit(1);
+    const existing = await tx.select({ balance: customerPointBalances.balance }).from(customerPointBalances).where(eq(customerPointBalances.customerId, input.customerId)).for("update").limit(1);
     const currentBalance = existing[0]?.balance ?? 0;
     const nextBalance = currentBalance + delta;
     if (nextBalance < 0) throw new Error("لا يمكن أن يصبح رصيد النقاط سالبًا");
@@ -1912,7 +1929,10 @@ export async function postTenantPointLedgerEntry(input: { organizationId: number
     } else {
       await tx.insert(customerPointBalances).values({ organizationId: input.organizationId, customerId: input.customerId, balance: nextBalance });
     }
-    const entry = await tx.insert(pointLedgerEntries).values({ organizationId: input.organizationId, customerId: input.customerId, kind: input.kind, points: input.points, reason: input.reason ?? null, createdByUserId: input.userId });
+
+    // Generate a unique reference for the point ledger entry to prevent idempotency double-spend races.
+    const reference = `${input.kind}-${input.customerId}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const entry = await tx.insert(pointLedgerEntries).values({ organizationId: input.organizationId, customerId: input.customerId, kind: input.kind, points: input.points, reason: input.reason ?? null, reference, createdByUserId: input.userId });
     return { id: Number(entry[0]?.insertId), balance: nextBalance };
   });
 }
@@ -2960,7 +2980,7 @@ export async function processWebhookEventIdempotently(
   provider: string,
   eventId: string,
   payload: string,
-  handler: () => Promise<void>
+  handler: (tx: any) => Promise<void>
 ): Promise<boolean> {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة");
@@ -2977,7 +2997,7 @@ export async function processWebhookEventIdempotently(
     await tx.insert(webhookEvents).values({ provider, eventId, payload });
 
     // Execute the business logic
-    await handler();
+    await handler(tx);
 
     return true;
   });

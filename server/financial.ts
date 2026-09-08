@@ -14,7 +14,8 @@ export function assertBalancedJournalLines(lines: ProposedJournalLine[]) {
     if (!line.accountCode.trim()) throw new Error("رمز الحساب مطلوب");
     const debit = toMinorUnits(line.debit);
     const credit = toMinorUnits(line.credit);
-    if ((debit === 0 && credit === 0) || (debit > 0 && credit > 0)) throw new Error("كل سطر يجب أن يكون مدينًا أو دائنًا فقط");
+    if ((debit === 0 && credit === 0)) throw new Error("لا يمكن تسجيل قيد بقيمة صفرية");
+    if ((debit > 0 && credit > 0)) throw new Error("كل سطر يجب أن يكون مدينًا أو دائنًا فقط");
     debitTotal += debit;
     creditTotal += credit;
   }

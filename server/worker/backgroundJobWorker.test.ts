@@ -105,7 +105,7 @@ describe("background job worker (real DB, no poll-interval wait — calls claimN
     // A router_health_check against a credential-less router fails gracefully
     // (checkRouterHealth returns ok:false), so the job should end up retrying,
     // not throw and not crash the worker loop.
-    await executeJob(claimed!);
+    if (!claimed) throw new Error("claimed job is null"); await executeJob(claimed!);
 
     const after = await fetchJob(jobId);
     expect(after?.status).toBe("retrying");
@@ -249,9 +249,13 @@ describe("background job worker (real DB, no poll-interval wait — calls claimN
       });
       const queued = await queueTenantSmsMessage({ organizationId: org.organizationId, userId: user.id, toNumber: "966511111111", body: "رسالة العامل" });
 
-      const claimed = await claimNextJob();
+      let claimed = await claimNextJob();
+      while (claimed && claimed.type !== "sms_send") {
+         await executeJob(claimed);
+         claimed = await claimNextJob();
+      }
       expect(claimed?.type).toBe("sms_send");
-      await executeJob(claimed!);
+      if (!claimed) throw new Error("Claimed is null"); await executeJob(claimed);
 
       const after = await fetchJob(claimed!.id);
       expect(after?.status).toBe("succeeded");

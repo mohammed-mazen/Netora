@@ -148,7 +148,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/webhooks/payments", express.json({ limit: "1mb" }), handlePaymentWebhook);
+  app.post("/api/webhooks/payments", express.json({ limit: "1mb", verify: (req: any, res, buf) => { req.rawBody = buf; } }), handlePaymentWebhook);
 
   app.use("/api/radius/accounting", radiusRateLimiter, express.json({ limit: "256kb" }));
   app.use("/api/trpc", express.json({ limit: "10mb" }), express.urlencoded({ limit: "10mb", extended: true }));

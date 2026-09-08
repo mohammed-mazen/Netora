@@ -286,7 +286,7 @@ export const networkSessions = mysqlTable("network_sessions", {
   lastUpdateAt: timestamp("lastUpdateAt").notNull(),
   stoppedAt: timestamp("stoppedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, table => [uniqueIndex("session_acct_unique").on(table.organizationId, table.acctUniqueId), index("session_router_state_idx").on(table.routerId, table.state)]);
+}, table => [uniqueIndex("session_acct_unique").on(table.organizationId, table.routerId, table.acctUniqueId), index("session_router_state_idx").on(table.routerId, table.state)]);
 
 export const invoices = mysqlTable("invoices", {
   id: int("id").autoincrement().primaryKey(),
