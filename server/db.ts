@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, like, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, like, ne, or, sql, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -1101,6 +1101,24 @@ export async function recordAuditEvent(event: AuditEvent): Promise<void> {
   } catch (error) {
     console.error("[Audit] Failed to persist event", error);
   }
+}
+
+export async function transitionOverdueInvoices(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const now = new Date();
+
+  // Find issued invoices where dueAt is strictly in the past
+  // and transition them to 'overdue'
+  const result = await db.update(invoices)
+    .set({ status: "overdue" })
+    .where(and(
+      eq(invoices.status, "issued"),
+      lt(invoices.dueAt, now)
+    ));
+
+  return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
 }
 
 export async function listTenantInvoices(organizationId: number, options: { limit?: number; offset?: number; search?: string; status?: "draft" | "issued" | "paid" | "void" | "overdue" } = {}) {

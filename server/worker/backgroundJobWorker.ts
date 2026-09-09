@@ -12,7 +12,7 @@ import { monitorSamples, monitorSettings } from "../../drizzle/schema";
 // touching the per-job-type handlers below.
 import { and, asc, eq, lt, lte, or, sql } from "drizzle-orm";
 import { backgroundJobs } from "../../drizzle/schema";
-import { getDb, getRouterById, getSessionForDisconnect, getTenantSmsMessageForDispatch, markSessionClosed, markTenantSmsMessageStatus, updateRouterHealthResult, updateTenantMonitorActionStatus, createTenantBackupJob } from "../db";
+import { getDb, getRouterById, getSessionForDisconnect, getTenantSmsMessageForDispatch, markSessionClosed, markTenantSmsMessageStatus, updateRouterHealthResult, updateTenantMonitorActionStatus, createTenantBackupJob, transitionOverdueInvoices } from "../db";
 import { checkRouterHealth, disconnectRouterSession, runRouterSystemCommand } from "../mikrotik";
 import { summarizeMonitorActionResult, type MonitorAction } from "../monitorActions";
 import { dispatchTenantSms } from "../smsDispatch";
@@ -35,9 +35,11 @@ const JOB_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // Only run the cleanup sweep once per this many ticks (not every 5s poll)
 // since it is a bulk DELETE, not a per-job operation.
 const CLEANUP_EVERY_N_TICKS = 720; // ~1 hour at the 5s poll interval
+const OVERDUE_CHECK_EVERY_N_TICKS = 720; // ~1 hour at the 5s poll interval
 
 let timer: NodeJS.Timeout | null = null;
 let ticksSinceCleanup = 0;
+let ticksSinceOverdueCheck = 0;
 
 /** Exported for direct testing. Deletes terminal (succeeded/failed) jobs older than JOB_RETENTION_MS. */
 export async function cleanupOldJobs(): Promise<number> {
@@ -370,6 +372,17 @@ async function tick() {
       if (deleted > 0) console.log(`[Worker] cleaned up ${deleted} terminal job(s) older than 30 days`);
     } catch (error) {
       console.error("[Worker] job cleanup failed:", error);
+    }
+  }
+
+  ticksSinceOverdueCheck += 1;
+  if (ticksSinceOverdueCheck >= OVERDUE_CHECK_EVERY_N_TICKS) {
+    ticksSinceOverdueCheck = 0;
+    try {
+      const updated = await transitionOverdueInvoices();
+      if (updated > 0) console.log(`[Worker] transitioned ${updated} invoice(s) to overdue`);
+    } catch (error) {
+      console.error("[Worker] overdue invoice transition failed:", error);
     }
   }
 }
