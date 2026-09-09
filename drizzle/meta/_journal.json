@@ -99,13 +99,6 @@
       "when": 1788914912826,
       "tag": "0013_rainy_chat",
       "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "5",
-      "when": 1788914956638,
-      "tag": "0014_majestic_speedball",
-      "breakpoints": true
     }
   ]
 }
